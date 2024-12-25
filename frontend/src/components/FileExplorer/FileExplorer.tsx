@@ -11,46 +11,11 @@ interface FileNode {
 
 interface FileExplorerProps {
   onFileSelect: (file: { name: string; content: string }) => void;
+  files: FileNode[];
 }
 
-export default function FileExplorer({ onFileSelect }: FileExplorerProps) {
+export default function FileExplorer({ onFileSelect, files }: FileExplorerProps) {
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set(['/']));
-
-  const fileStructure: FileNode[] = [
-    {
-      name: 'src',
-      type: 'folder',
-      children: [
-        {
-          name: 'components',
-          type: 'folder',
-          children: [
-            {
-              name: 'App.tsx',
-              type: 'file',
-              content: '// App.tsx content here...'
-            },
-            {
-              name: 'LandingPage.tsx',
-              type: 'file',
-              content: '// LandingPage.tsx content here...'
-            }
-          ]
-        },
-        {
-          name: 'utils',
-          type: 'folder',
-          children: [
-            {
-              name: 'helpers.ts',
-              type: 'file',
-              content: '// Helper functions...'
-            }
-          ]
-        }
-      ]
-    }
-  ];
 
   const toggleFolder = (path: string) => {
     const newOpenFolders = new Set(openFolders);
@@ -97,7 +62,7 @@ export default function FileExplorer({ onFileSelect }: FileExplorerProps) {
         </h2>
       </div>
       <div className="flex-1 overflow-auto">
-        <div className="p-2">{renderFileTree(fileStructure)}</div>
+        <div className="p-2">{renderFileTree(files)}</div>
       </div>
     </div>
   );

@@ -1,43 +1,45 @@
-import React from 'react';
-import { PlayCircle } from 'lucide-react';
+import { CheckCircle, Circle, Clock } from 'lucide-react';
+import { Step } from '../types';
 
-interface Step {
-  id: number;
-  title: string;
-  status: 'completed' | 'in-progress' | 'pending';
+interface BuildStepsProps {
+  steps: Step[];
+  currentStep: number;
+  onStepClick: (stepId: number) => void;
 }
 
-export default function BuildSteps() {
-  const steps: Step[] = [
-    { id: 1, title: 'Initialize Project', status: 'completed' },
-    { id: 2, title: 'Create File Structure', status: 'in-progress' },
-    { id: 3, title: 'Generate Components', status: 'pending' },
-    { id: 4, title: 'Add Styling', status: 'pending' },
-    { id: 5, title: 'Implement Features', status: 'pending' },
-  ];
+export function BuildSteps({ steps, currentStep, onStepClick }: BuildStepsProps) {
+
+  console.log("Steps", steps);
 
   return (
+    <div className="bg-gray-900 rounded-lg shadow-lg p-4 h-full overflow-auto">
+    <h2 className="text-lg font-semibold mb-4 text-gray-100">Build Steps</h2>
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-gray-200 flex items-center gap-2">
-        <PlayCircle className="h-5 w-5 text-blue-400" />
-        Build Steps
-      </h2>
-      <div className="space-y-2">
-        {steps.map((step) => (
-          <div
-            key={step.id}
-            className={`p-3 rounded-lg ${
-              step.status === 'completed'
-                ? 'bg-green-900/50 text-green-200'
-                : step.status === 'in-progress'
-                ? 'bg-blue-900/50 text-blue-200'
-                : 'bg-gray-800 text-gray-300'
-            }`}
-          >
-            {step.title}
+      {steps.map((step) => (
+        <div
+          key={step.id}
+          className={`p-1 rounded-lg cursor-pointer transition-colors flex items-center ${
+            currentStep === step.id
+              ? 'bg-gray-800 border border-gray-700'
+              : 'bg-gray-700'
+          }`}
+          onClick={() => onStepClick(step.id)}
+        >
+          <div className="flex-shrink-0">
+            {step.status === 'completed' ? (
+              <CheckCircle className="text-green-500" />
+            ) : step.status === 'in-progress' ? (
+              <Clock className="text-yellow-500" />
+            ) : (
+              <Circle className="text-gray-500" />
+            )}
           </div>
-        ))}
-      </div>
+          <div className="ml-2 overflow-hidden flex-1">
+            <span className="text-gray-100 text-sm">{step.title}</span>
+          </div>
+        </div>
+      ))}
     </div>
+  </div>
   );
 }
