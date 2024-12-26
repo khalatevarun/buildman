@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import Tabs from './Tabs';
 import CodeEditor from './CodeEditor';
-import Preview from './Preview';
+import { WebContainer } from '@webcontainer/api';
+import { Preview } from './Preview';
 
 interface ContentProps {
+  webContainer: WebContainer
   selectedFile: { name: string; content: string } | null;
 }
 
-export default function Content({ selectedFile }: ContentProps) {
+export default function Content({ selectedFile, webContainer }: ContentProps) {
   const [activeTab, setActiveTab] = useState<'code' | 'preview'>('code');
 
   return (
@@ -17,7 +19,7 @@ export default function Content({ selectedFile }: ContentProps) {
         {activeTab === 'code' ? (
           <CodeEditor file={selectedFile} />
         ) : (
-          <Preview />
+          <Preview webContainer={webContainer} />
         )}
       </div>
     </div>

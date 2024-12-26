@@ -1,4 +1,6 @@
 import { Step, StepType } from './types';
+import { v4 as uuidv4 } from 'uuid';
+
 
 /*
  * Parse input XML and convert it into steps.
@@ -47,7 +49,7 @@ export function parseXml(response: string): Step[] {
   
     // Add initial artifact step
     steps.push({
-      id: stepId++,
+      id: uuidv4(),
       title: artifactTitle,
       description: '',
       type: StepType.CreateFolder,
@@ -64,8 +66,8 @@ export function parseXml(response: string): Step[] {
       if (type === 'file') {
         // File creation step
         steps.push({
-          id: stepId++,
-          title: `Create ${filePath || 'file'}`,
+            id: uuidv4(),
+            title: `Create ${filePath || 'file'}`,
           description: '',
           type: StepType.CreateFile,
           status: 'pending',
@@ -75,8 +77,8 @@ export function parseXml(response: string): Step[] {
       } else if (type === 'shell') {
         // Shell command step
         steps.push({
-          id: stepId++,
-          title: 'Run command',
+            id: uuidv4(),
+            title: 'Run command',
           description: '',
           type: StepType.RunScript,
           status: 'pending',

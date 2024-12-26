@@ -3,8 +3,8 @@ import { Step } from '../types';
 
 interface BuildStepsProps {
   steps: Step[];
-  currentStep: number;
-  onStepClick: (stepId: number) => void;
+  currentStep: string;
+  onStepClick: (stepId: string) => void;
 }
 
 export function BuildSteps({ steps, currentStep, onStepClick }: BuildStepsProps) {

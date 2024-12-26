@@ -7,17 +7,19 @@ import axios from 'axios';
 import { BuildSteps } from './BuildSteps';
 import { FileItem, Step, StepType } from '../types';
 import { parseXml } from '../steps';
+import { useWebContainer } from '../hooks/useWebContainer';
+import { WebContainer } from '@webcontainer/api';
 
 export default function Workspace() {
   const location = useLocation();
   const { prompt } = location.state || { prompt: '' };
   const [selectedFile, setSelectedFile] = useState<{ name: string; content: string } | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState('');
   const [files, setFiles] = useState<any[]>([]);
+  const webcontainer = useWebContainer();
 
-
-
+  console.log("webcontainer in Worksapce>>>", webcontainer)
 
   useEffect(() => {
     let originalFiles = [...files];
@@ -126,9 +128,11 @@ export default function Workspace() {
   
     // Mount the structure if WebContainer is available
     console.log(mountStructure);
-    // webcontainer?.mount(mountStructure);
-  // }, [files, webcontainer]);
-}, [files]);
+    webcontainer?.mount(mountStructure);
+  }, [files, webcontainer]);
+
+
+
 
 
   async function init() {
@@ -191,7 +195,7 @@ export default function Workspace() {
 
     {/* Content Area */}
     <div className="flex-1">
-      <Content selectedFile={selectedFile} />
+      <Content selectedFile={selectedFile} webContainer={webcontainer as WebContainer} />
     </div>
   </div>
   );
