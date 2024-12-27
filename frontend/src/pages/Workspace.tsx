@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import FileExplorer from './FileExplorer/FileExplorer';
-import Content from './Workspace/Content';
+import FileExplorer from '../components/FileExplorer/FileExplorer';
+import Content from '../components/Workspace/Content';
 import { BACKEDN_URL } from '../config';
 import axios from 'axios';
-import { BuildSteps } from './BuildSteps';
+import { BuildSteps } from '../components/BuildSteps';
 import { FileItem, Step, StepType } from '../types';
 import { parseXml } from '../steps';
 import { useWebContainer } from '../hooks/useWebContainer';

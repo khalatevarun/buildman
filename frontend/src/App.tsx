@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import LandingPage from './components/LandingPage';
-import Workspace from './components/Workspace';
+import LandingPage from './pages/LandingPage';
+import Workspace from './pages/Workspace';
 
 function App() {
   return (
