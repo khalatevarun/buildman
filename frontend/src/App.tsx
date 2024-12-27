@@ -1,13 +1,13 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import LandingPage from './pages/LandingPage';
+import Home from './pages/Home';
 import Workspace from './pages/Workspace';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/workspace" element={<Workspace />} />
+        <Route path="/" element={<Home />} />
+        {/* <Route path="/workspace" element={<Workspace />} /> */}
       </Routes>
     </BrowserRouter>
   );

@@ -33,3 +33,8 @@ export enum StepType {
     file: FileItem | null;
     onClose: () => void;
   }
+
+export interface ChatMessage {
+    role: string;
+    content: string;
+}

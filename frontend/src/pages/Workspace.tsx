@@ -2,13 +2,12 @@ import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import FileExplorer from '../components/FileExplorer/FileExplorer';
 import Content from '../components/Workspace/Content';
-import { BACKEDN_URL } from '../config';
-import axios from 'axios';
 import { BuildSteps } from '../components/BuildSteps';
 import { FileItem, Step, StepType } from '../types';
 import { parseXml } from '../steps';
 import { useWebContainer } from '../hooks/useWebContainer';
 import { WebContainer } from '@webcontainer/api';
+import { getChatResponse, getTemplate } from '../utility/api';
 
 export default function Workspace() {
   const location = useLocation();
@@ -144,9 +143,7 @@ export default function Workspace() {
 
 
   async function init() {
-    const response = await axios.post(`${BACKEDN_URL}/template`, {
-      prompt: prompt.trim()
-    });
+    const response = await getTemplate(prompt);
     
     const {prompts, uiPrompts} = response.data;
 
@@ -156,12 +153,12 @@ export default function Workspace() {
     })));
 
     setLoading(true);
-    const stepsResponse = await axios.post(`${BACKEDN_URL}/chat`, {
-      messages: [...prompts, prompt].map(content => ({
-        role: "user",
-        content
-      }))
-    })
+
+    const messagesPayload = [...prompts, prompt].map(content => ({
+      role: "user",
+      content
+    }))
+    const stepsResponse = await getChatResponse(messagesPayload);
 
     setLoading(false);
 
@@ -181,8 +178,6 @@ export default function Workspace() {
   useEffect(() => {
     init();
   }, [])
-
-  // console.log(parsedMessages);
 
   return (
     <div className="h-screen flex bg-gray-900">
@@ -209,9 +204,8 @@ export default function Workspace() {
               };
 
               setLoading(true);
-              const stepsResponse = await axios.post(`${BACKEDN_URL}/chat`, {
-                messages: [...llmMessages, newMessage]
-              });
+              const messagesPayload = [...llmMessages, newMessage];
+              const stepsResponse = await getChatResponse(messagesPayload);
               setLoading(false);
 
               setLlmMessages(x => [...x, newMessage]);
