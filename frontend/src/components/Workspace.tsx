@@ -18,6 +18,14 @@ export default function Workspace() {
   const [currentStep, setCurrentStep] = useState('');
   const [files, setFiles] = useState<any[]>([]);
   const webcontainer = useWebContainer();
+  const [userPrompt, setUserPrompt] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [llmMessages, setLlmMessages] = useState<{role: "user" | "assistant", content: string;}[]>([]);
+
+
+  const handlePromptChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setUserPrompt(event.target.value);
+  };
 
   console.log("webcontainer in Worksapce>>>", webcontainer)
 
@@ -139,7 +147,6 @@ export default function Workspace() {
     const response = await axios.post(`${BACKEDN_URL}/template`, {
       prompt: prompt.trim()
     });
-    // setTemplateSet(true);
     
     const {prompts, uiPrompts} = response.data;
 
@@ -148,7 +155,7 @@ export default function Workspace() {
       status: "pending"
     })));
 
-    // setLoading(true);
+    setLoading(true);
     const stepsResponse = await axios.post(`${BACKEDN_URL}/chat`, {
       messages: [...prompts, prompt].map(content => ({
         role: "user",
@@ -156,19 +163,19 @@ export default function Workspace() {
       }))
     })
 
-    // setLoading(false);
+    setLoading(false);
 
     setSteps(s => [...s, ...parseXml(stepsResponse.data.response).map(x => ({
       ...x,
       status: "pending" as "pending"
     }))]);
 
-    // setLlmMessages([...prompts, prompt].map(content => ({
-      // role: "user",
-      // content
-    // })));
+    setLlmMessages([...prompts, prompt].map(content => ({
+      role: "user",
+      content
+    })));
 
-    // setLlmMessages(x => [...x, {role: "assistant", content: stepsResponse.data.response}])
+    setLlmMessages(x => [...x, {role: "assistant", content: stepsResponse.data.response}])
   }
 
   useEffect(() => {
@@ -186,6 +193,44 @@ export default function Workspace() {
        currentStep={currentStep}
        onStepClick={setCurrentStep}
       />
+      <div className="mt-4">
+          <input
+            type="text"
+            value={userPrompt}
+            onChange={handlePromptChange}
+            placeholder="Enter your prompt"
+            className="w-full p-2 rounded bg-gray-800 text-gray-100"
+          />
+          <button
+            onClick={async () => {
+              const newMessage = {
+                role: "user" as "user",
+                content: userPrompt
+              };
+
+              setLoading(true);
+              const stepsResponse = await axios.post(`${BACKEDN_URL}/chat`, {
+                messages: [...llmMessages, newMessage]
+              });
+              setLoading(false);
+
+              setLlmMessages(x => [...x, newMessage]);
+              setLlmMessages(x => [...x, {
+                role: "assistant",
+                content: stepsResponse.data.response
+              }]);
+              
+              setSteps(s => [...s, ...parseXml(stepsResponse.data.response).map(x => ({
+                ...x,
+                status: "pending" as "pending"
+              }))]);
+}}
+            className="mt-2 w-full p-2 rounded bg-blue-600 text-gray-100"
+            disabled={loading}
+          >
+            {loading ? 'Loading...' : 'Submit'}
+          </button>
+        </div>
     </div>
 
     {/* File Explorer */}
