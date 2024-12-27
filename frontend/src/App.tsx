@@ -7,7 +7,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />
-        {/* <Route path="/workspace" element={<Workspace />} /> */}
+        <Route path="/workspace" element={<Workspace />} />
       </Routes>
     </BrowserRouter>
   );
