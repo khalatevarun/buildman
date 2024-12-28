@@ -8,6 +8,7 @@ import { parseXml } from '../steps';
 import { useWebContainer } from '../hooks/useWebContainer';
 import { WebContainer } from '@webcontainer/api';
 import { getChatResponse, getTemplate } from '../utility/api';
+import { handleDownload } from '../utility/helper';
 
 export default function Workspace() {
   const location = useLocation();
@@ -223,6 +224,12 @@ export default function Workspace() {
             disabled={loading}
           >
             {loading ? 'Loading...' : 'Submit'}
+          </button>
+          <button
+            onClick={()=>handleDownload(files)}
+            className="mt-2 w-full p-2 rounded bg-green-600 text-gray-100"
+          >
+            Export Code
           </button>
         </div>
     </div>
