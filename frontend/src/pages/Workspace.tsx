@@ -8,6 +8,8 @@ import { parseXml } from '../steps';
 import { useWebContainer } from '../hooks/useWebContainer';
 import { WebContainer } from '@webcontainer/api';
 import { getChatResponse, getTemplate } from '../utility/api';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 
 export default function Workspace() {
   const location = useLocation();
@@ -179,6 +181,28 @@ export default function Workspace() {
     init();
   }, [])
 
+  const handleDownload = async () => {
+    const zip = new JSZip();
+
+    const addFilesToZip = (folderStructure: FileItem[], folder: JSZip) => {
+      folderStructure.forEach(item => {
+        if (item.type === 'folder') {
+          const newFolder = folder.folder(item.name);
+          if (item.children) {
+            addFilesToZip(item.children, newFolder as JSZip);
+          }
+        } else {
+          folder.file(item.name, item.content);
+        }
+      });
+    };
+
+    addFilesToZip(files, zip);
+
+    const content = await zip.generateAsync({ type: 'blob' });
+    saveAs(content, 'project.zip');
+  };
+
   return (
     <div className="h-screen flex bg-gray-900">
     {/* Left Sidebar - Steps */}
@@ -223,6 +247,12 @@ export default function Workspace() {
             disabled={loading}
           >
             {loading ? 'Loading...' : 'Submit'}
+          </button>
+          <button
+            onClick={handleDownload}
+            className="mt-2 w-full p-2 rounded bg-green-600 text-gray-100"
+          >
+            Export Code
           </button>
         </div>
     </div>
