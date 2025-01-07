@@ -19,6 +19,7 @@ const react_1 = require("./defaults/react");
 const node_1 = require("./defaults/node");
 const prompts_1 = require("./prompts");
 const cors_1 = __importDefault(require("cors"));
+const stream_1 = require("stream");
 const anthropic = new sdk_1.default();
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
@@ -50,6 +51,73 @@ app.post("/template", (req, res) => __awaiter(void 0, void 0, void 0, function* 
     }
     res.status(403).json({ message: "You cant access this" });
     return;
+}));
+app.post("/enhance-prompt", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { message } = req.body;
+    // Set headers for streaming
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    try {
+        const stream = yield anthropic.messages.create({
+            messages: [{
+                    role: 'user',
+                    content: `Enhance this prompt to be more specific and detailed. Create a single artifact with the improved prompt and nothing else.
+
+                <original_prompt>
+                ${message}
+                </original_prompt>`,
+                }],
+            model: 'claude-3-5-sonnet-20241022',
+            max_tokens: 1000,
+            stream: true,
+        });
+        // Create transform to process chunks
+        const transform = new stream_1.Transform({
+            objectMode: true, // Important: we're dealing with objects, not strings
+            transform(chunk, encoding, callback) {
+                try {
+                    if (chunk.type === 'content_block_delta' && 'text' in chunk.delta) {
+                        const data = `data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`;
+                        callback(null, data);
+                    }
+                    else {
+                        // Skip other message types (message_start, message_delta, etc.)
+                        callback();
+                    }
+                }
+                catch (error) {
+                    callback(error);
+                }
+            }
+        });
+        // Create readable stream from the API stream
+        const readable = stream_1.Readable.from(stream, { objectMode: true });
+        // Pipe through transform and to response
+        readable
+            .pipe(transform)
+            .on('error', (error) => {
+            console.error('Transform error:', error);
+            res.write(`data: ${JSON.stringify({ error: 'Streaming failed' })}\n\n`);
+            res.end();
+        })
+            .pipe(res)
+            .on('error', (error) => {
+            console.error('Response error:', error);
+            res.write(`data: ${JSON.stringify({ error: 'Streaming failed' })}\n\n`);
+            res.end();
+        });
+        // Handle end of stream
+        readable.on('end', () => {
+            res.write('data: [DONE]\n\n');
+            res.end();
+        });
+    }
+    catch (error) {
+        console.error('Error initiating stream:', error);
+        res.write(`data: ${JSON.stringify({ error: 'Failed to initiate streaming' })}\n\n`);
+        res.end();
+    }
 }));
 app.post("/chat", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;

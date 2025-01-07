@@ -1,10 +1,26 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, Code, Eye, Edit } from 'lucide-react';
+import { BACKEND_URL } from '../utility/api';
 
 const Home = () => {
+  // Add useRef for the textarea
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [idea, setIdea] = useState('');
+  const [isEnhancing, setIsEnhancing] = useState(false);
   const navigate = useNavigate();
+  // Function to scroll to bottom
+  const scrollToBottom = () => {
+    if (textareaRef.current) {
+      textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+    }
+  };
+
+  // Effect to handle auto-scrolling when idea changes
+  useEffect(() => {
+    scrollToBottom();
+  }, [idea]);
+  
 
   const handleSubmit = (event:any) => {
     event.preventDefault();
@@ -12,6 +28,60 @@ const Home = () => {
       navigate('/workspace', { state: { prompt: idea } });
     }
   };
+
+  const enhancePrompt = async () => {
+    try {
+      setIsEnhancing(true);
+      const response = await fetch(`${BACKEND_URL}/enhance-prompt`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: idea }),
+      });
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No reader available');
+
+      // Store the original prompt
+      const originalPrompt = idea;
+      setIdea(''); // Clear the input before streaming starts
+
+      // Create a new TextDecoder to handle the incoming stream
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        // Decode the stream chunk
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        // Process each line
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(5);
+            if (data === '[DONE]') break;
+
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.text) {
+                setIdea(current => current + parsed.text);
+              }
+            } catch (e) {
+              console.error('Error parsing SSE data:', e);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error enhancing prompt:', error);
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
 
   const features = [
     {
@@ -47,24 +117,55 @@ const Home = () => {
           </p>
 
           <form onSubmit={handleSubmit} className="max-w-2xl mx-auto">
-            <div className="flex gap-4">
-              <input
-                type="text"
-                value={idea}
-                onChange={(e) => setIdea(e.target.value)}
-                placeholder="Describe what you want to build..."
-                className="flex-1 px-6 py-4 rounded-xl bg-gray-800/50 border border-gray-700 text-gray-100 
-                          placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                type="submit"
-                className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl font-semibold
-                          hover:opacity-90 transition-all duration-200 shadow-lg shadow-blue-500/25"
-              >
-                Build Now
-              </button>
-            </div>
-          </form>
+  <div className="flex gap-4 items-start">
+    <div className="flex-1 relative">
+      <textarea
+        ref={textareaRef}
+        value={idea}
+        onChange={(e) => setIdea(e.target.value)}
+        placeholder="Describe what you want to build..."
+        style={{
+          scrollbarWidth: 'thin',
+          scrollbarColor: 'rgb(107 114 128) transparent',
+        }}
+        className="w-full px-6 py-4 rounded-xl bg-gray-800/50 border border-gray-700 text-gray-100 
+                  placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-12
+                  min-h-[60px] overflow-y-auto
+                  [&::-webkit-scrollbar]:w-2 
+                  [&::-webkit-scrollbar-track]:bg-transparent
+                  [&::-webkit-scrollbar-thumb]:bg-gray-600
+                  [&::-webkit-scrollbar-thumb]:rounded-full"
+      />
+      <button
+        type="button"
+        onClick={enhancePrompt}
+        disabled={isEnhancing || !idea.trim()}
+        className="absolute right-3 top-4 p-2 text-gray-400 
+                  hover:text-blue-400 transition-colors disabled:opacity-50 
+                  disabled:cursor-not-allowed group"
+      >
+        <Sparkles className="w-5 h-5" />
+        <div className="absolute right-0 w-52 p-2 mt-2 text-sm text-gray-100 bg-gray-800 rounded-lg 
+                      shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible 
+                      transition-all duration-200 -translate-y-1 group-hover:translate-y-0
+                      border border-gray-700 z-10">
+          Enhance your prompt for better results
+        </div>
+      </button>
+    </div>
+    <div className="flex-shrink-0">
+      <button
+        type="submit"
+        disabled={!idea.trim() || isEnhancing}
+        className="h-[60px] px-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl font-semibold
+                  hover:opacity-90 transition-all duration-200 shadow-lg shadow-blue-500/25
+                  disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {isEnhancing ? 'Enhancing Prompt...' : 'Build Now'}
+      </button>
+    </div>
+  </div>
+</form>
         </div>
 
         <div className="grid md:grid-cols-3 gap-8 mb-16">
@@ -90,10 +191,6 @@ const Home = () => {
             <div className="flex items-center gap-3 text-gray-400">
               <div className="w-2 h-2 rounded-full bg-blue-400"></div>
               Streaming Code Generation
-            </div>
-            <div className="flex items-center gap-3 text-gray-400">
-              <div className="w-2 h-2 rounded-full bg-blue-400"></div>
-              Code Export Functionality
             </div>
           </div>
         </div>
