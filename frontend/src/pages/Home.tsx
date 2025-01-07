@@ -192,10 +192,6 @@ const Home = () => {
               <div className="w-2 h-2 rounded-full bg-blue-400"></div>
               Streaming Code Generation
             </div>
-            <div className="flex items-center gap-3 text-gray-400">
-              <div className="w-2 h-2 rounded-full bg-blue-400"></div>
-              Code Export Functionality
-            </div>
           </div>
         </div>
       </div>
