@@ -117,57 +117,55 @@ const Home = () => {
           </p>
 
           <form onSubmit={handleSubmit} className="max-w-2xl mx-auto">
-            <div className="flex gap-4">
-              <div className="flex-1 relative">
-                <textarea
-                  ref={(textareaRef) => {
-                    if (textareaRef) {
-                      // Auto-scroll to bottom when content changes
-                      textareaRef.scrollTop = textareaRef.scrollHeight;
-                    }
-                  }}
-                  value={idea}
-                  onChange={(e) => setIdea(e.target.value)}
-                  placeholder="Describe what you want to build..."
-                  // className="w-full px-6 py-4 rounded-xl bg-gray-800/50 border border-gray-700 text-gray-100 
-                  //           placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-12
-                  //           resize-none min-h-[60px] max-h-[200px] overflow-y-auto"
-                  style={{
-                    scrollbarWidth: 'thin',
-                    scrollbarColor: 'rgb(107 114 128) transparent',
-                    // WebkitScrollbarWidth: 'thin'
-                  }}
-                  // Add custom scrollbar styles for webkit browsers
-                  className="w-full px-6 py-4 rounded-xl bg-gray-800/50 border border-gray-700 text-gray-100 
-                            placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-12
-                            min-h-[60px] overflow-y-auto
-                            [&::-webkit-scrollbar]:w-2 
-                            [&::-webkit-scrollbar-track]:bg-transparent
-                            [&::-webkit-scrollbar-thumb]:bg-gray-600
-                            [&::-webkit-scrollbar-thumb]:rounded-full"
-                />
-                <button
-                  type="button"
-                  onClick={enhancePrompt}
-                  disabled={isEnhancing || !idea.trim()}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-gray-400 
-                           hover:text-blue-400 transition-colors disabled:opacity-50 
-                           disabled:cursor-not-allowed"
-                >
-                  <Sparkles className="w-5 h-5" />
-                </button>
-              </div>
-              <button
-                type="submit"
-                disabled={!idea.trim() || isEnhancing}
-                className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl font-semibold
-                          hover:opacity-90 transition-all duration-200 shadow-lg shadow-blue-500/25
-                          disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isEnhancing ? 'Enhancing Prompt...' : 'Build Now'}
-              </button>
-            </div>
-          </form>
+  <div className="flex gap-4 items-start">
+    <div className="flex-1 relative">
+      <textarea
+        ref={textareaRef}
+        value={idea}
+        onChange={(e) => setIdea(e.target.value)}
+        placeholder="Describe what you want to build..."
+        style={{
+          scrollbarWidth: 'thin',
+          scrollbarColor: 'rgb(107 114 128) transparent',
+        }}
+        className="w-full px-6 py-4 rounded-xl bg-gray-800/50 border border-gray-700 text-gray-100 
+                  placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-12
+                  min-h-[60px] overflow-y-auto
+                  [&::-webkit-scrollbar]:w-2 
+                  [&::-webkit-scrollbar-track]:bg-transparent
+                  [&::-webkit-scrollbar-thumb]:bg-gray-600
+                  [&::-webkit-scrollbar-thumb]:rounded-full"
+      />
+      <button
+        type="button"
+        onClick={enhancePrompt}
+        disabled={isEnhancing || !idea.trim()}
+        className="absolute right-3 top-4 p-2 text-gray-400 
+                  hover:text-blue-400 transition-colors disabled:opacity-50 
+                  disabled:cursor-not-allowed group"
+      >
+        <Sparkles className="w-5 h-5" />
+        <div className="absolute right-0 w-52 p-2 mt-2 text-sm text-gray-100 bg-gray-800 rounded-lg 
+                      shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible 
+                      transition-all duration-200 -translate-y-1 group-hover:translate-y-0
+                      border border-gray-700 z-10">
+          Enhance your prompt for better results
+        </div>
+      </button>
+    </div>
+    <div className="flex-shrink-0">
+      <button
+        type="submit"
+        disabled={!idea.trim() || isEnhancing}
+        className="h-[60px] px-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl font-semibold
+                  hover:opacity-90 transition-all duration-200 shadow-lg shadow-blue-500/25
+                  disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {isEnhancing ? 'Enhancing Prompt...' : 'Build Now'}
+      </button>
+    </div>
+  </div>
+</form>
         </div>
 
         <div className="grid md:grid-cols-3 gap-8 mb-16">
