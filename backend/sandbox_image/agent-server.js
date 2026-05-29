@@ -40,6 +40,8 @@ let claudeSessionId = fs.existsSync(SESSION_ID_FILE)
 
 let claudeUid = null
 let claudeGid = null
+let activeClaudeProc = null
+let wasStopped = false
 
 function initNonRootUser() {
   try {
@@ -209,13 +211,26 @@ app.post('/init-workspace', async (req, res) => {
   try {
     fs.mkdirSync(WORKSPACE, { recursive: true })
 
-    if (fs.existsSync(BUNDLE_PATH)) {
-      // Restore from persisted git bundle onto LOCAL disk
+    const hasGitRepo = fs.existsSync(path.join(WORKSPACE, '.git'))
+
+    if (hasGitRepo) {
+      // Workspace already populated — restored from a filesystem snapshot.
+      // Files are already in place; just wipe stale Claude session state and
+      // re-seed credentials so the new sandbox can authenticate.
+      if (fs.existsSync(CLAUDE_CONFIG_DIR)) {
+        fs.rmSync(CLAUDE_CONFIG_DIR, { recursive: true, force: true })
+      }
+      if (claudeUid !== null) {
+        execSync(`chown -R buildman:buildman ${WORKSPACE}`, { stdio: 'pipe' })
+      }
+      claudeSessionId = null
+      if (fs.existsSync(SESSION_ID_FILE)) fs.unlinkSync(SESSION_ID_FILE)
+      initCredentials()
+    } else if (fs.existsSync(BUNDLE_PATH)) {
+      // Legacy path: restore from git bundle on a mounted volume.
       const entries = fs.readdirSync(WORKSPACE).filter(e => e !== 'lost+found')
       if (entries.length === 0) {
         await execAsync(`git clone ${BUNDLE_PATH} ${WORKSPACE}`)
-        // Wipe stale Claude session state from the bundle. The previous sandbox's
-        // Claude process is gone — any .claude-data from it causes EACCES on resume.
         if (fs.existsSync(CLAUDE_CONFIG_DIR)) {
           fs.rmSync(CLAUDE_CONFIG_DIR, { recursive: true, force: true })
         }
@@ -224,7 +239,6 @@ app.post('/init-workspace', async (req, res) => {
         }
         claudeSessionId = null
         if (fs.existsSync(SESSION_ID_FILE)) fs.unlinkSync(SESSION_ID_FILE)
-        // Re-seed credentials into the fresh config dir
         initCredentials()
       }
     } else {
@@ -324,6 +338,8 @@ app.post('/prompt', async (req, res) => {
   ]
 
   const proc = spawn('claude', runArgs, spawnOpts)
+  activeClaudeProc = proc
+  wasStopped = false
   proc.stdin.end()  // prevent "no stdin data received" warning
   attachClaudeStdout(res, proc)
 
@@ -334,6 +350,22 @@ app.post('/prompt', async (req, res) => {
   })
 
   proc.on('close', async (code) => {
+    activeClaudeProc = null
+
+    if (wasStopped) {
+      wasStopped = false
+      try {
+        await execAsync('git reset --hard HEAD', { cwd: WORKSPACE })
+      } catch (e) {
+        console.error('reset on stop failed:', e.message)
+      }
+      claudeSessionId = null
+      if (fs.existsSync(SESSION_ID_FILE)) fs.unlinkSync(SESSION_ID_FILE)
+      writeSse(res, { type: 'stopped' })
+      res.end()
+      return
+    }
+
     let commitHash = null
     try {
       await ensureGitRepo()
@@ -484,6 +516,14 @@ app.post('/deploy', async (req, res) => {
       if (stashed) await execAsync('git stash pop', { cwd: WORKSPACE }).catch(() => {})
     }
   }
+})
+
+app.post('/stop', (req, res) => {
+  if (activeClaudeProc) {
+    wasStopped = true
+    activeClaudeProc.kill('SIGINT')
+  }
+  res.json({ ok: true })
 })
 
 app.post('/set-env', async (req, res) => {

@@ -39,11 +39,15 @@ _SSE_HEADERS = {
 }
 
 
+def _modal_app_dir() -> str:
+    # modal_app.py lives two levels above backend/main.py
+    return os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+
+
 def _create_sandbox(project_id: str, user_id: str) -> dict:
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+    sys.path.insert(0, _modal_app_dir())
     from modal_app import sandbox_image, claude_secret, netlify_secret  # noqa: PLC0415
 
-    workspace_volume = modal.Volume.from_name(f"buildman-proj-{project_id}", create_if_missing=True)
     secrets = [s for s in [claude_secret, netlify_secret] if s is not None]
 
     sandbox = modal.Sandbox.create(
@@ -55,7 +59,6 @@ def _create_sandbox(project_id: str, user_id: str) -> dict:
         timeout=3600,
         idle_timeout=900,
         encrypted_ports=[3001, 5173],
-        volumes={"/data": workspace_volume},
     )
     tunnels = sandbox.tunnels()
     return {
@@ -63,6 +66,75 @@ def _create_sandbox(project_id: str, user_id: str) -> dict:
         "agent_url": tunnels[3001].url,
         "preview_url": tunnels[5173].url,
     }
+
+
+def _restore_from_snapshot(snapshot_id: str) -> dict:
+    """Create a new sandbox using a filesystem snapshot image as the base.
+
+    Verified against Modal docs:
+    https://modal.com/docs/guide/sandbox-snapshots
+    https://modal.com/docs/reference/modal.Image (from_id method)
+    """
+    sys.path.insert(0, _modal_app_dir())
+    from modal_app import claude_secret, netlify_secret  # noqa: PLC0415
+
+    # modal.Image.from_id() reconstructs an Image object from a stored ID.
+    # Confirmed available: modal.com/docs/reference/modal.Image
+    image = modal.Image.from_id(snapshot_id)
+    secrets = [s for s in [claude_secret, netlify_secret] if s is not None]
+
+    sandbox = modal.Sandbox.create(
+        "node", "/app/agent-server.js",
+        image=image,
+        secrets=secrets,
+        cpu=2.0,
+        memory=2048,
+        timeout=3600,
+        idle_timeout=900,
+        encrypted_ports=[3001, 5173],
+    )
+    tunnels = sandbox.tunnels()
+    return {
+        "sandbox_id": sandbox.object_id,
+        "agent_url": tunnels[3001].url,
+        "preview_url": tunnels[5173].url,
+    }
+
+
+def _claim_from_pool() -> dict | None:
+    """Pop one healthy sandbox from the warm pool queue.
+
+    Returns None if pool is empty or all entries are stale/unhealthy.
+    Pattern follows Modal's official sandbox_pool.py example.
+    """
+    sys.path.insert(0, _modal_app_dir())
+    from modal_app import sandbox_pool_queue  # noqa: PLC0415
+
+    while True:
+        ref = sandbox_pool_queue.get(block=False)
+        if ref is None:
+            return None
+
+        # Discard if < 5 min remaining on the sandbox clock
+        if ref["expires_at"] < time.time() + (5 * 60):
+            try:
+                modal.Sandbox.from_id(ref["sandbox_id"]).terminate()
+            except Exception:
+                pass
+            continue
+
+        # Quick health check before handing to user
+        try:
+            r = httpx.get(f"{ref['agent_url']}/healthz", timeout=3)
+            if r.status_code == 200:
+                return {
+                    "sandbox_id": ref["sandbox_id"],
+                    "agent_url": ref["agent_url"],
+                    "preview_url": ref["preview_url"],
+                }
+        except Exception:
+            pass
+        # Unhealthy — discard and try next entry
 
 
 def _destroy_sandbox(sandbox_id: str) -> None:
@@ -111,6 +183,34 @@ async def _get_deploy_info(user_id: str, project_id: str) -> dict:
     return {"deployed_hash": None, "deployed_url": None, "netlify_site_id": None}
 
 
+async def _take_snapshot(user_id: str, sandbox_id: str, project_id: str) -> None:
+    """Take a filesystem snapshot of the sandbox after a prompt completes.
+
+    Runs in the background — does not block the user's response stream.
+    snapshot_filesystem() is a synchronous Modal SDK call (up to 55s), so we
+    run it in a thread. API verified at:
+    https://modal.com/docs/guide/sandbox-snapshots
+    """
+    try:
+        def _snap() -> str:
+            sb = modal.Sandbox.from_id(sandbox_id)
+            image = sb.snapshot_filesystem()
+            return image.object_id
+
+        image_id = await asyncio.to_thread(_snap)
+
+        projects = await project_list_store.get.aio(user_id) or []
+        for p in projects:
+            if p["project_id"] == project_id:
+                p["snapshot_id"] = image_id
+                p["snapshot_at"] = int(time.time())
+                break
+        await project_list_store.put.aio(user_id, projects)
+        print(f"[snapshot] project={project_id} image={image_id}")
+    except Exception as e:
+        print(f"[snapshot] failed for project={project_id}: {e}")
+
+
 class CreateProjectRequest(BaseModel):
     user_id: str
     project_name: str
@@ -142,6 +242,10 @@ class SaveChatRequest(BaseModel):
     checkpoints: list[dict]
 
 
+class StopRequest(BaseModel):
+    user_id: str
+
+
 @app.get("/projects")
 async def list_projects(user_id: str):
     projects = await project_list_store.get.aio(user_id) or []
@@ -157,29 +261,35 @@ async def create_project(req: CreateProjectRequest):
     async def stream():
         yield _sse({"type": "phase", "text": "Provisioning sandbox…"})
         try:
-            info = await asyncio.to_thread(_create_sandbox, project_id, req.user_id)
+            # Try the warm pool first (instant if pool has a healthy entry)
+            info = await asyncio.to_thread(_claim_from_pool)
 
-            # Persist session immediately; only add to project list for real (non-prewarm) projects
+            if info is not None:
+                # Pool hit — spawn a replacement in the background to keep pool full
+                sys.path.insert(0, _modal_app_dir())
+                from modal_app import add_sandbox_to_pool  # noqa: PLC0415
+                add_sandbox_to_pool.spawn()
+            else:
+                # Pool empty — cold create
+                info = await asyncio.to_thread(_create_sandbox, project_id, req.user_id)
+                yield _sse({"type": "phase", "text": "Waiting for agent…"})
+                await _wait_for_sandbox(info["agent_url"])
+                yield _sse({"type": "phase", "text": "Preparing workspace…"})
+                await _init_workspace(info["agent_url"])
+
             now = int(time.time())
             name = req.project_name[:80] if req.project_name else f"Project {project_id}"
             await sessions.put.aio(req.user_id, {"project_id": project_id, **info})
-            if name != "__prewarm__":
-                projects = await project_list_store.get.aio(req.user_id) or []
-                projects.insert(0, {
-                    "project_id": project_id,
-                    "name": name,
-                    "created_at": now,
-                    "last_used_at": now,
-                    "deployed_url": None,
-                    "deployed_hash": None,
-                })
-                await project_list_store.put.aio(req.user_id, projects)
-
-            yield _sse({"type": "phase", "text": "Waiting for agent…"})
-            await _wait_for_sandbox(info["agent_url"])
-
-            yield _sse({"type": "phase", "text": "Preparing workspace…"})
-            await _init_workspace(info["agent_url"])
+            projects = await project_list_store.get.aio(req.user_id) or []
+            projects.insert(0, {
+                "project_id": project_id,
+                "name": name,
+                "created_at": now,
+                "last_used_at": now,
+                "deployed_url": None,
+                "deployed_hash": None,
+            })
+            await project_list_store.put.aio(req.user_id, projects)
 
             yield _sse({"type": "done", "project_id": project_id, "preview_url": info["preview_url"], "deployed_hash": None})
         except Exception as e:
@@ -201,7 +311,6 @@ async def update_project(project_id: str, req: UpdateProjectRequest):
             p["name"] = req.name[:80]
             break
     else:
-        # Project not in list yet (was a prewarm) — insert it now
         now = int(time.time())
         projects.insert(0, {
             "project_id": project_id,
@@ -243,7 +352,35 @@ async def open_project(project_id: str, req: OpenProjectRequest):
             except Exception:
                 pass
 
-        # Spin up a fresh sandbox for this project
+        # Look up the project's snapshot (taken after each prompt)
+        projects = await project_list_store.get.aio(req.user_id) or []
+        project = next((p for p in projects if p["project_id"] == project_id), None)
+        snapshot_id = project.get("snapshot_id") if project else None
+
+        if snapshot_id:
+            # Fast path: restore workspace from filesystem snapshot.
+            # Creates a new sandbox using the snapshot image as the base.
+            # Verified against: https://modal.com/docs/guide/sandbox-snapshots
+            yield _sse({"type": "phase", "text": "Restoring your workspace…"})
+            try:
+                info = await asyncio.to_thread(_restore_from_snapshot, snapshot_id)
+                await sessions.put.aio(req.user_id, {"project_id": project_id, **info})
+
+                yield _sse({"type": "phase", "text": "Waiting for agent…"})
+                await _wait_for_sandbox(info["agent_url"])
+
+                yield _sse({"type": "phase", "text": "Finishing restore…"})
+                await _init_workspace(info["agent_url"])
+
+                await _touch_project(req.user_id, project_id)
+                deploy_info = await _get_deploy_info(req.user_id, project_id)
+                yield _sse({"type": "done", "project_id": project_id, "preview_url": info["preview_url"], **deploy_info})
+                return
+            except Exception as e:
+                print(f"[restore] snapshot restore failed for project={project_id}: {e}")
+                # Fall through to cold create
+
+        # Cold create fallback (no snapshot yet, or snapshot restore failed)
         yield _sse({"type": "phase", "text": "Starting sandbox…"})
         try:
             info = await asyncio.to_thread(_create_sandbox, project_id, req.user_id)
@@ -312,21 +449,42 @@ async def send_prompt(req: PromptRequest):
         raise HTTPException(status_code=404, detail="No active sandbox. Create a project first.")
 
     agent_url = session["agent_url"]
+    sandbox_id = session["sandbox_id"]
+    project_id = session.get("project_id")
 
     async def stream():
         prompt_timeout = httpx.Timeout(connect=30.0, read=1800.0, write=30.0, pool=30.0)
+        done_seen = False
         async with httpx.AsyncClient(timeout=prompt_timeout) as client:
             async with client.stream(
                 "POST", f"{agent_url}/prompt", json={"text": _wrap_prompt(req.text)}
             ) as r:
                 async for chunk in r.aiter_text():
                     yield chunk
+                    # After the done event fires, take a background filesystem snapshot
+                    # so the next open_project can restore instantly.
+                    # snapshot_filesystem() docs: https://modal.com/docs/guide/sandbox-snapshots
+                    if not done_seen and project_id and '"type": "done"' in chunk:
+                        done_seen = True
+                        asyncio.create_task(
+                            _take_snapshot(req.user_id, sandbox_id, project_id)
+                        )
 
     return StreamingResponse(
         stream(),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
     )
+
+
+@app.post("/stop")
+async def stop_prompt(req: StopRequest):
+    session = await sessions.get.aio(req.user_id)
+    if not session:
+        return {"ok": True}
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.post(f"{session['agent_url']}/stop")
+        return r.json()
 
 
 @app.get("/sandbox/status")
@@ -398,7 +556,6 @@ async def deploy_project(req: DeployRequest):
     if not session:
         raise HTTPException(status_code=404, detail="No active sandbox.")
     project_id = session.get("project_id")
-    # Look up existing Netlify site ID to reuse the same site on republish
     deploy_info = await _get_deploy_info(req.user_id, project_id) if project_id else {}
     netlify_site_id = deploy_info.get("netlify_site_id")
     async with httpx.AsyncClient(timeout=180) as client:
@@ -464,16 +621,13 @@ async def destroy_sandbox_endpoint(user_id: str):
     return {"ok": True}
 
 
-def _delete_volume(project_id: str) -> None:
-    try:
-        vol = modal.Volume.from_name(f"buildman-proj-{project_id}")
-        vol.delete()
-    except Exception:
-        pass  # volume may not exist if project never ran a prompt
-
-
 @app.delete("/projects/{project_id}")
 async def delete_project(project_id: str, user_id: str):
+    # Collect snapshot_id before removing from list
+    projects = await project_list_store.get.aio(user_id) or []
+    project = next((p for p in projects if p["project_id"] == project_id), None)
+    snapshot_id = project.get("snapshot_id") if project else None
+
     # Terminate sandbox if it's running this project
     session = await sessions.get.aio(user_id)
     if session and session.get("project_id") == project_id:
@@ -484,11 +638,18 @@ async def delete_project(project_id: str, user_id: str):
         await sessions.pop.aio(user_id, None)
 
     # Remove from project list
-    projects = await project_list_store.get.aio(user_id) or []
     projects = [p for p in projects if p["project_id"] != project_id]
     await project_list_store.put.aio(user_id, projects)
 
-    # Delete the Modal volume (blocks briefly — run in thread)
-    await asyncio.to_thread(_delete_volume, project_id)
+    # Clean up snapshot image so it doesn't accumulate indefinitely.
+    # API: modal.experimental.image_delete(image_id)
+    # Verified at: https://modal.com/docs/guide/sandbox-snapshots
+    if snapshot_id:
+        def _delete_snapshot() -> None:
+            try:
+                modal.experimental.image_delete(snapshot_id)
+            except Exception:
+                pass
+        await asyncio.to_thread(_delete_snapshot)
 
     return {"ok": True}
