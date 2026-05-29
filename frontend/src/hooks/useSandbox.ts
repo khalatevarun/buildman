@@ -1,14 +1,9 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { setDeployedHash, setDeployedUrl } from '../store'
 import { api, API_URL } from '../utility/api'
 
 export type SandboxStatus = 'idle' | 'creating' | 'ready'
-
-interface SandboxInfo {
-  project_id: string
-  preview_url: string
-}
 
 async function* readSSE(response: Response) {
   const reader = response.body!.getReader()
@@ -32,50 +27,11 @@ export function useSandbox(userId: string | null) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [status, setStatus] = useState<SandboxStatus>('idle')
   const [phase, setPhase] = useState<string | null>(null)
-  const prewarmRef = useRef<Promise<SandboxInfo | null> | null>(null)
-  const prewarmUsedRef = useRef(false)
 
-  // Silently starts a sandbox in the background with a placeholder name.
-  const prewarm = () => {
-    if (!userId || prewarmRef.current) return
-    prewarmRef.current = (async () => {
-      const response = await fetch(`${API_URL}/projects`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, project_name: '__prewarm__' }),
-      })
-      for await (const event of readSSE(response)) {
-        if (event.type === 'done') {
-          setPreviewUrl(event.preview_url)
-          dispatch(setDeployedHash(null))
-          return { project_id: event.project_id, preview_url: event.preview_url } as SandboxInfo
-        }
-        if (event.type === 'error') return null
-      }
-      return null
-    })().catch(() => {
-      prewarmRef.current = null
-      return null
-    })
-  }
-
-  // Called when user clicks Build. If prewarm is done, reuses that sandbox.
   const createProject = async (name: string): Promise<string> => {
     setStatus('creating')
-
-    if (prewarmRef.current) {
-      const info = await prewarmRef.current
-      if (info) {
-        prewarmUsedRef.current = true
-        await api.patch(`/projects/${info.project_id}`, { user_id: userId, name }).catch(() => {})
-        dispatch(setDeployedHash(null))
-        setStatus('ready')
-        return info.project_id
-      }
-    }
-
-    // No prewarm available — stream creation phases
     setPhase('Provisioning sandbox…')
+
     const response = await fetch(`${API_URL}/projects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -101,10 +57,7 @@ export function useSandbox(userId: string | null) {
   }
 
   // Ensures the sandbox is ready for a given project. Used by Workspace on mount.
-  // Fast-path: if the sandbox is already running this exact project, returns immediately.
-  // Slow-path: spins up a new sandbox and streams phases to the overlay.
   const ensureSandbox = async (projectId: string): Promise<void> => {
-    // Quick check — avoids showing the overlay for a page refresh or re-navigation
     try {
       const { data } = await api.get<{
         status: string
@@ -121,7 +74,6 @@ export function useSandbox(userId: string | null) {
       }
     } catch { /* network error — fall through to open */ }
 
-    // Sandbox dead or running a different project — open with SSE phases
     setStatus('creating')
     const response = await fetch(`${API_URL}/projects/${projectId}/open`, {
       method: 'POST',
@@ -150,13 +102,5 @@ export function useSandbox(userId: string | null) {
     if (userId) api.delete(`/sandbox?user_id=${userId}`).catch(() => {})
   }
 
-  // Terminates the prewarm sandbox if it was never used as a real project.
-  // Call on Home unmount so orphaned sandboxes don't accumulate.
-  const cancelPrewarm = async () => {
-    if (!userId || prewarmUsedRef.current || !prewarmRef.current) return
-    const info = await prewarmRef.current.catch(() => null)
-    if (info) api.delete(`/sandbox?user_id=${userId}`).catch(() => {})
-  }
-
-  return { previewUrl, status, phase, prewarm, createProject, ensureSandbox, destroySandbox, cancelPrewarm }
+  return { previewUrl, status, phase, createProject, ensureSandbox, destroySandbox }
 }

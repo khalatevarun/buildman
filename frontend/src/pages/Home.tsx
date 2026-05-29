@@ -7,17 +7,11 @@ import { SCATTERED } from '../data/prompts'
 export function Home() {
   const { user } = useUser()
   const navigate = useNavigate()
-  const { createProject, status, phase, prewarm, cancelPrewarm } = useSandbox(user?.id ?? null)
+  const { createProject, status, phase } = useSandbox(user?.id ?? null)
   const [prompt, setPrompt] = useState('')
   const [focused, setFocused] = useState(false)
   const [mousePos, setMousePos] = useState({ x: -9999, y: -9999 })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  useEffect(() => {
-    if (!user?.id) return
-    prewarm()
-    return () => { cancelPrewarm() }
-  }, [user?.id])
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => setMousePos({ x: e.clientX, y: e.clientY })
