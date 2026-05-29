@@ -5,7 +5,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import { toast } from 'sonner'
 import { useSandbox } from '../hooks/useSandbox'
 import { usePrompt } from '../hooks/usePrompt'
-import { setPreviewingHash, resetWorkspace, restoreHistory, setDeployedHash, setDeployedUrl, setProjectName } from '../store'
+import { setPreviewingHash, resetWorkspace, restoreHistory, setDeployedHash, setDeployedUrl, setProjectName, dequeuePrompt, store } from '../store'
 import type { RootState } from '../store'
 import { ChatPanel } from '../components/ChatPanel'
 import { PreviewPane } from '../components/PreviewPane'
@@ -80,7 +80,8 @@ export function Workspace() {
   const projectName = useSelector((s: RootState) => s.app.projectName)
 
   const { previewUrl, ensureSandbox } = useSandbox(userId)
-  const { sendPrompt } = usePrompt(userId, projectId ?? null)
+  const { sendPrompt, stopPrompt } = usePrompt(userId, projectId ?? null)
+  const prevStreamingRef = useRef(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [panelWidth, setPanelWidth] = useState(320)
   const [bannerRestoreOpen, setBannerRestoreOpen] = useState(false)
@@ -172,6 +173,18 @@ export function Workspace() {
     return () => { active = false }
   }, [projectId, userId])
 
+  useEffect(() => {
+    if (prevStreamingRef.current && !streaming) {
+      const queue = store.getState().app.promptQueue
+      if (queue.length > 0) {
+        const next = queue[0]
+        dispatch(dequeuePrompt())
+        sendPrompt(next)
+      }
+    }
+    prevStreamingRef.current = streaming
+  }, [streaming])
+
   const handleDeploy = async (hash: string): Promise<string> => {
     if (!userId) throw new Error('Not authenticated')
     setPublishingHash(hash)
@@ -196,6 +209,20 @@ export function Workspace() {
       dispatch(setPreviewingHash(null))
     } catch {
       toast.error("Couldn't exit preview mode")
+    }
+  }
+
+  const handleVersionChange = async (hash: string | null) => {
+    if (!userId) return
+    if (hash === null) {
+      await handleExitPreview()
+    } else {
+      try {
+        await api.post('/preview', { user_id: userId, hash })
+        dispatch(setPreviewingHash(hash))
+      } catch {
+        toast.error("Couldn't switch version")
+      }
     }
   }
 
@@ -272,7 +299,7 @@ export function Workspace() {
             className="flex flex-col shrink-0"
             style={{ width: panelWidth }}
           >
-            <ChatPanel onSend={sendPrompt} userId={userId} publishingHash={publishingHash} onDeploy={handleDeploy} />
+            <ChatPanel onSend={sendPrompt} onStop={stopPrompt} userId={userId} publishingHash={publishingHash} onDeploy={handleDeploy} projectName={projectName} />
           </div>
         )}
 
@@ -280,7 +307,7 @@ export function Workspace() {
         {!isExpanded && (
           <div
             onMouseDown={onDividerMouseDown}
-            className="w-1 shrink-0 cursor-col-resize group relative z-10 hover:bg-primary/30 transition-colors duration-150"
+            className="w-px shrink-0 cursor-col-resize group relative z-10 hover:bg-primary/30 transition-colors duration-150"
             style={{ background: 'var(--border)' }}
           >
             {/* Center grip dots */}
@@ -299,6 +326,9 @@ export function Workspace() {
             streaming={streaming}
             isExpanded={isExpanded}
             onToggleExpand={() => setIsExpanded(e => !e)}
+            checkpoints={checkpoints}
+            previewingHash={previewingHash}
+            onVersionChange={handleVersionChange}
           />
           {/* Blocks iframe from stealing mouse events while the divider is being dragged */}
           {isDragging && (
