@@ -1,0 +1,75 @@
+export const EXAMPLES = [
+  'A weather dashboard using the OpenWeatherMap API',
+  'A chat app powered by OpenAI GPT-4o',
+  'A Pomodoro timer with session history',
+  'A GitHub repo explorer with star counts',
+  'A news reader with AI-generated summaries',
+  'A habit tracker with a streak calendar',
+]
+
+export const SCATTERED = [
+  // row 1
+  { x: 4,   y: 4,  text: 'A Spotify clone with playlists' },
+  { x: 22,  y: 3,  text: 'A real-time collaborative whiteboard' },
+  { x: 44,  y: 2,  text: 'A markdown blog with syntax highlighting' },
+  { x: 63,  y: 5,  text: 'A kanban board with drag-and-drop' },
+  { x: 80,  y: 3,  text: 'A stock portfolio tracker' },
+  { x: 94,  y: 6,  text: 'A recipe app with ingredient search' },
+  // row 2
+  { x: 7,   y: 12, text: 'A multiplayer quiz with leaderboard' },
+  { x: 25,  y: 11, text: 'A URL shortener with analytics' },
+  { x: 48,  y: 13, text: 'A budget tracker with categories' },
+  { x: 70,  y: 10, text: 'A type-speed test with live WPM' },
+  { x: 88,  y: 13, text: 'A flashcard app with spaced repetition' },
+  // row 3
+  { x: 3,   y: 22, text: 'A drawing canvas with shape tools' },
+  { x: 19,  y: 21, text: 'A currency converter with live rates' },
+  { x: 38,  y: 23, text: 'A code snippet manager with tags' },
+  { x: 57,  y: 20, text: 'A job board with application tracker' },
+  { x: 75,  y: 24, text: 'A chess game with move history' },
+  { x: 93,  y: 21, text: 'A calorie counter with macros' },
+  // row 4
+  { x: 5,   y: 34, text: 'A timezone world clock for teams' },
+  { x: 18,  y: 36, text: 'A personal finance dashboard' },
+  { x: 33,  y: 33, text: 'A daily journal with mood tracking' },
+  { x: 50,  y: 35, text: 'A font pairing explorer' },
+  { x: 67,  y: 34, text: 'An API rate limiter dashboard' },
+  { x: 82,  y: 33, text: 'A password manager with vault' },
+  { x: 94,  y: 36, text: 'A link-in-bio page builder' },
+  // row 5
+  { x: 4,   y: 47, text: 'A note-taking app with backlinks' },
+  { x: 16,  y: 49, text: 'A sleep tracker with insights' },
+  { x: 31,  y: 46, text: 'A minimal RSS reader' },
+  { x: 48,  y: 48, text: 'A side-project idea generator' },
+  { x: 65,  y: 47, text: 'A retro pixel art editor' },
+  { x: 84,  y: 46, text: 'A workout log with progress graphs' },
+  { x: 95,  y: 49, text: 'A poll creator with live results' },
+  // row 6
+  { x: 6,   y: 60, text: 'A meeting scheduler with time zones' },
+  { x: 17,  y: 62, text: 'An invoice generator with PDF export' },
+  { x: 33,  y: 59, text: 'A Wordle-style word game' },
+  { x: 50,  y: 61, text: 'A git commit message generator' },
+  { x: 67,  y: 60, text: 'A Lichess opening explorer' },
+  { x: 83,  y: 59, text: 'A random meal planner' },
+  { x: 93,  y: 63, text: 'A QR code generator' },
+  // row 7
+  { x: 4,   y: 72, text: 'A color palette generator' },
+  { x: 22,  y: 74, text: 'A resume builder with templates' },
+  { x: 42,  y: 75, text: 'A GitHub stats dashboard' },
+  { x: 62,  y: 73, text: 'A countdown timer for events' },
+  { x: 80,  y: 75, text: 'A travel itinerary planner' },
+  { x: 94,  y: 72, text: 'A meme generator with captions' },
+  // row 8
+  { x: 7,   y: 83, text: 'A sorting algorithm visualizer' },
+  { x: 26,  y: 82, text: 'A word frequency counter' },
+  { x: 47,  y: 84, text: 'An expense splitter for groups' },
+  { x: 67,  y: 81, text: 'A CSS gradient generator' },
+  { x: 86,  y: 83, text: 'A dev portfolio with dark mode' },
+  // row 9
+  { x: 4,   y: 92, text: 'A Hacker News reader' },
+  { x: 23,  y: 93, text: 'A typing practice app' },
+  { x: 44,  y: 91, text: 'A music chord progression tool' },
+  { x: 64,  y: 94, text: 'A habit tracker with streaks' },
+  { x: 82,  y: 92, text: 'A pomodoro timer with history' },
+  { x: 95,  y: 90, text: 'A news reader with summaries' },
+]
