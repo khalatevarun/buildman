@@ -5,6 +5,7 @@ interface ChatMessage {
   role: 'user' | 'assistant'
   text: string
   activities: string[]
+  stopped?: boolean
 }
 
 interface CheckpointEntry {
@@ -29,6 +30,8 @@ interface AppState {
   deployedHash: string | null
   deployedUrl: string | null
   projectName: string | null
+  promptQueue: string[]
+  pendingInput: string | null
 }
 
 const initialState: AppState = {
@@ -41,6 +44,8 @@ const initialState: AppState = {
   deployedHash: null,
   deployedUrl: null,
   projectName: null,
+  promptQueue: [],
+  pendingInput: null,
 }
 
 const appSlice = createSlice({
@@ -95,6 +100,29 @@ const appSlice = createSlice({
       state.messages = action.payload.messages
       state.checkpoints = action.payload.checkpoints
     },
+    enqueuePrompt(state, action: PayloadAction<string>) {
+      state.promptQueue.push(action.payload)
+    },
+    dequeuePrompt(state) {
+      state.promptQueue.shift()
+    },
+    removeFromQueue(state, action: PayloadAction<number>) {
+      state.promptQueue.splice(action.payload, 1)
+    },
+    clearQueue(state) {
+      state.promptQueue = []
+    },
+    cancelLastExchange(state) {
+      let lastUserIdx = -1
+      for (let i = state.messages.length - 1; i >= 0; i--) {
+        if (state.messages[i].role === 'user') { lastUserIdx = i; break }
+      }
+      if (lastUserIdx !== -1) state.messages = state.messages.slice(0, lastUserIdx)
+      state.liveActivity = []
+    },
+    setPendingInput(state, action: PayloadAction<string | null>) {
+      state.pendingInput = action.payload
+    },
     // Truncates messages and checkpoints to only those up to (and including) the given hash.
     // checkpoint[i] pairs with the (i+1)-th assistant message, so keep 2*(i+1) messages.
     truncateToCheckpoint(state, action: PayloadAction<string>) {
@@ -125,6 +153,12 @@ export const {
   restoreHistory,
   truncateToCheckpoint,
   resetWorkspace,
+  enqueuePrompt,
+  dequeuePrompt,
+  removeFromQueue,
+  clearQueue,
+  cancelLastExchange,
+  setPendingInput,
 } = appSlice.actions
 
 export const store = configureStore({ reducer: { app: appSlice.reducer } })

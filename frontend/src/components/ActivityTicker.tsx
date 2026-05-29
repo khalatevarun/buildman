@@ -56,7 +56,6 @@ export function ActivityTicker({ items, streaming }: Props) {
               </div>
             ))}
           </div>
-          <div className="absolute bottom-0 left-0 right-0 h-5 pointer-events-none bg-gradient-to-b from-transparent to-muted/90" />
         </div>
       )}
     </div>

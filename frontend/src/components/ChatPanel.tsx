@@ -1,9 +1,10 @@
 import { useRef, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useSelector, useDispatch } from 'react-redux'
 import ReactMarkdown from 'react-markdown'
 import { toast } from 'sonner'
 import { api } from '../utility/api'
-import { setPreviewingHash, setEnvNeeded, restoreHistory } from '../store'
+import { setPreviewingHash, setEnvNeeded, restoreHistory, enqueuePrompt, removeFromQueue, setPendingInput } from '../store'
 import type { RootState } from '../store'
 import { ActivityTicker } from './ActivityTicker'
 import { CheckpointCard } from './CheckpointCard'
@@ -16,9 +17,11 @@ const THINKING_WORDS = [
 
 interface Props {
   onSend: (text: string) => void
+  onStop: () => void
   userId: string | null
   publishingHash: string | null
   onDeploy: (hash: string) => Promise<string>
+  projectName: string | null
 }
 
 function ThinkingDots({ word }: { word: string }) {
@@ -42,7 +45,7 @@ function ThinkingDots({ word }: { word: string }) {
   )
 }
 
-export function ChatPanel({ onSend, userId, publishingHash, onDeploy }: Props) {
+export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, projectName }: Props) {
   const dispatch = useDispatch()
   const messages = useSelector((s: RootState) => s.app.messages)
   const streaming = useSelector((s: RootState) => s.app.streaming)
@@ -52,9 +55,18 @@ export function ChatPanel({ onSend, userId, publishingHash, onDeploy }: Props) {
   const envNeeded = useSelector((s: RootState) => s.app.envNeeded)
   const deployedHash = useSelector((s: RootState) => s.app.deployedHash)
   const deployedUrl = useSelector((s: RootState) => s.app.deployedUrl)
+  const promptQueue = useSelector((s: RootState) => s.app.promptQueue)
+  const pendingInput = useSelector((s: RootState) => s.app.pendingInput)
   const [input, setInput] = useState('')
   const [thinkingWord, setThinkingWord] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (pendingInput) {
+      setInput(pendingInput)
+      dispatch(setPendingInput(null))
+    }
+  }, [pendingInput, dispatch])
 
   useEffect(() => {
     if (streaming) setThinkingWord(THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)])
@@ -72,8 +84,12 @@ export function ChatPanel({ onSend, userId, publishingHash, onDeploy }: Props) {
 
   const handleSend = () => {
     const text = input.trim()
-    if (!text || streaming || previewingHash || publishingHash) return
+    if (!text || previewingHash || publishingHash) return
     setInput('')
+    if (streaming) {
+      dispatch(enqueuePrompt(text))
+      return
+    }
     onSend(text)
   }
 
@@ -100,6 +116,22 @@ export function ChatPanel({ onSend, userId, publishingHash, onDeploy }: Props) {
 
   return (
     <div className="flex flex-col h-full bg-background">
+      {/* Nav header */}
+      <div className="flex items-center justify-between px-4 py-2.5 shrink-0 border-b border-border">
+        <Link
+          to="/projects"
+          className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors duration-150 no-underline"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M6.5 1.5L2 5l4.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Projects
+        </Link>
+        <span className="text-[11px] font-semibold tracking-tight text-muted-foreground/60 font-heading truncate max-w-[140px]">
+          {projectName ?? 'Buildman'}
+        </span>
+        <div className="w-[52px]" />
+      </div>
       {/* Messages */}
       <div className="flex-1 overflow-y-auto py-5 space-y-5" style={{ scrollbarWidth: 'none' }}>
         {messages.map((m, i) => {
@@ -200,11 +232,30 @@ export function ChatPanel({ onSend, userId, publishingHash, onDeploy }: Props) {
           </p>
         )}
 
+        {/* Queued prompts */}
+        {promptQueue.length > 0 && !previewingHash && (
+          <div className="mb-1.5 flex flex-col gap-1">
+            {promptQueue.map((item, i) => (
+              <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/60 border border-border/40">
+                <span className="text-[10px] text-muted-foreground/30 shrink-0">↳</span>
+                <span className="flex-1 text-[12px] text-muted-foreground/60 truncate">{item}</span>
+                <button
+                  onClick={() => dispatch(removeFromQueue(i))}
+                  className="text-[13px] leading-none text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors shrink-0"
+                  aria-label="Remove from queue"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="relative">
           <textarea
             className="w-full text-[13px] text-foreground/80 rounded-xl px-3.5 py-2.5 pr-10 resize-none focus:outline-none placeholder:text-muted-foreground/40 leading-relaxed transition-colors duration-150 bg-muted border border-border focus:border-border/60"
             rows={3}
-            placeholder="Describe what to change…"
+            placeholder={streaming ? 'Queue a follow-up…' : 'Describe what to change…'}
             value={input}
             disabled={!!previewingHash || !!publishingHash}
             onChange={e => setInput(e.target.value)}
@@ -215,16 +266,28 @@ export function ChatPanel({ onSend, userId, publishingHash, onDeploy }: Props) {
               }
             }}
           />
-          <button
-            onClick={handleSend}
-            disabled={streaming || !input.trim() || !!previewingHash || !!publishingHash}
-            className="absolute bottom-2.5 right-2.5 w-6 h-6 flex items-center justify-center rounded-md transition-all duration-150 disabled:opacity-20 disabled:cursor-not-allowed bg-muted hover:bg-card text-muted-foreground"
-            aria-label="Send"
-          >
-            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-              <path d="M5.5 9.5V1.5M5.5 1.5L2 5M5.5 1.5L9 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+          {streaming ? (
+            <button
+              onClick={onStop}
+              className="absolute bottom-2.5 right-2.5 w-6 h-6 flex items-center justify-center rounded-md transition-all duration-150 bg-muted hover:bg-card text-muted-foreground"
+              aria-label="Stop"
+            >
+              <svg width="9" height="9" viewBox="0 0 9 9" fill="currentColor">
+                <rect x="0" y="0" width="9" height="9" rx="1.5"/>
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || !!previewingHash || !!publishingHash}
+              className="absolute bottom-2.5 right-2.5 w-6 h-6 flex items-center justify-center rounded-md transition-all duration-150 disabled:opacity-20 disabled:cursor-not-allowed bg-muted hover:bg-card text-muted-foreground"
+              aria-label="Send"
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                <path d="M5.5 9.5V1.5M5.5 1.5L2 5M5.5 1.5L9 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          )}
         </div>
       </div>
     </div>

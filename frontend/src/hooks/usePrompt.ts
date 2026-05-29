@@ -9,6 +9,9 @@ import {
   addUserMessage,
   setEnvNeeded,
   setProjectName,
+  clearQueue,
+  cancelLastExchange,
+  setPendingInput,
   store,
 } from '../store'
 import { api, API_URL } from '../utility/api'
@@ -97,6 +100,15 @@ export function usePrompt(userId: string | null, projectId: string | null) {
             flushBuffer()
             dispatch(appendChatOutput(`\n\n⚠️ ${event.text}`))
           }
+          if (event.type === 'stopped') {
+            flushBuffer()
+            dispatch(clearQueue())
+            dispatch(cancelLastExchange())
+            dispatch(setPendingInput(text))
+            dispatch(finalizeMessage([...activities]))
+            dispatch(setStreaming(false))
+            return
+          }
           if (event.type === 'env_needed') dispatch(setEnvNeeded(event.vars))
           if (event.type === 'done') {
             flushBuffer()
@@ -154,5 +166,12 @@ export function usePrompt(userId: string | null, projectId: string | null) {
     }
   }
 
-  return { sendPrompt }
+  const stopPrompt = async () => {
+    if (!userId) return
+    try {
+      await api.post('/stop', { user_id: userId })
+    } catch { /* best effort */ }
+  }
+
+  return { sendPrompt, stopPrompt }
 }
