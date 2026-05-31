@@ -108,39 +108,47 @@ function formatToolLabel(name, input) {
   return name
 }
 
+function deriveService(varName) {
+  const stripped = varName.replace(/^VITE_/, '')
+  const segment = stripped.split('_')[0]
+  return segment.charAt(0) + segment.slice(1).toLowerCase()
+}
+
 function scanEnvPlaceholders() {
   const envPath = path.join(WORKSPACE, '.env')
   if (!fs.existsSync(envPath)) return []
   const lines = fs.readFileSync(envPath, 'utf8').split('\n')
-  const results = []
-  let lastMeta = null
+  const groups = []
+  let pendingUrl = null
+  let currentVars = []
+  let currentUrl = null
+
+  const flushGroup = () => {
+    if (currentVars.length > 0) {
+      groups.push({ service: deriveService(currentVars[0]), url: currentUrl, vars: currentVars })
+      currentVars = []
+      currentUrl = null
+    }
+    pendingUrl = null
+  }
+
   for (const line of lines) {
     const trimmed = line.trim()
-    if (trimmed.startsWith('# service:')) {
-      // parse: # service: OpenAI | url: https://... | hint: starts with sk-
-      const meta = {}
-      for (const part of trimmed.slice(1).split('|')) {
-        const idx = part.indexOf(':')
-        if (idx === -1) continue
-        const key = part.slice(0, idx).trim()
-        const val = part.slice(idx + 1).trim()
-        meta[key] = val
-      }
-      lastMeta = meta
+    if (trimmed.startsWith('# http')) {
+      flushGroup()
+      pendingUrl = trimmed.slice(2).trim()
       continue
     }
-    const match = trimmed.match(/^([^=]+)=__NEEDS_USER_VALUE__$/)
+    const match = trimmed.match(/^([A-Z_][A-Z0-9_]*)=\s*$/)
     if (match) {
-      results.push({
-        name: match[1].trim(),
-        service: lastMeta?.service || null,
-        url: lastMeta?.url || null,
-        hint: lastMeta?.hint || null,
-      })
+      if (currentVars.length === 0) currentUrl = pendingUrl
+      currentVars.push(match[1])
+      continue
     }
-    lastMeta = null
+    flushGroup()
   }
-  return results
+  flushGroup()
+  return groups
 }
 
 function attachClaudeStdout(res, proc) {
@@ -158,6 +166,8 @@ function attachClaudeStdout(res, proc) {
           fs.writeFileSync(SESSION_ID_FILE, claudeSessionId)
         }
         if (event.type === 'assistant' && event.message?.content) {
+          const hasText = event.message.content.some(b => b.type === 'text' && b.text)
+          if (hasText) writeSse(res, { type: 'new_turn' })
           for (const block of event.message.content) {
             if (block.type === 'text' && block.text) {
               writeSse(res, { type: 'output', text: block.text })
@@ -205,6 +215,28 @@ async function saveBundle() {
   } catch (e) {
     console.error('saveBundle failed:', e.message)
   }
+}
+
+function primeClaudeSession() {
+  const authMode = getAuthMode()
+  if (!authMode) return
+
+  const spawnOpts = {
+    cwd: WORKSPACE,
+    env: {
+      ...process.env,
+      CI: '1',
+      CLAUDE_CONFIG_DIR,
+      HOME: '/home/buildman',
+      ...(process.env.ANTHROPIC_API_KEY ? { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY } : {}),
+      ...(process.env.CLAUDE_CODE_OAUTH_TOKEN ? { CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN } : {}),
+    },
+    ...(claudeUid !== null ? { uid: claudeUid, gid: claudeGid } : {}),
+  }
+
+  // primeClaudeSession disabled — spawning a throwaway claude process does not
+  // meaningfully reduce first-prompt latency; the real fix is --bare on every spawn.
+  return
 }
 
 app.post('/init-workspace', async (req, res) => {
@@ -262,6 +294,8 @@ app.post('/init-workspace', async (req, res) => {
     ensureNodeModules()
 
     spawnVite()
+
+    // primeClaudeSession() — disabled, see function body for rationale
 
     res.json({ ok: true })
   } catch (e) {
@@ -329,10 +363,10 @@ app.post('/prompt', async (req, res) => {
 
   const runArgs = [
     '--print',
-    ...(authMode === 'api_key' ? ['--bare'] : []),
     '--dangerously-skip-permissions',
     '--output-format', 'stream-json',
     '--verbose',
+    '--append-system-prompt-file', `${WORKSPACE}/CLAUDE.md`,
     ...(claudeSessionId ? ['--resume', claudeSessionId] : []),
     text,
   ]
@@ -539,8 +573,7 @@ app.post('/set-env', async (req, res) => {
 
     for (const [name, value] of Object.entries(vars)) {
       const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      // Replace placeholder line (with or without preceding meta comment)
-      const placeholderRe = new RegExp(`^${escapedName}=__NEEDS_USER_VALUE__$`, 'm')
+      const placeholderRe = new RegExp(`^${escapedName}=\\s*$`, 'm')
       if (placeholderRe.test(content)) {
         content = content.replace(placeholderRe, `${name}=${value}`)
       } else {
