@@ -44,7 +44,7 @@ sandbox_image = (
         f"echo '{STARTER_TAR_GZ_B64}' | base64 -d | tar -xzf - -C /opt/starter",
         "cd /app && npm install",
         "cd /opt/starter && npm install",
-        "echo buildman-sandbox-v8-tailwind-lucide-inter > /app/.build-id",
+        "echo buildman-sandbox-v9-tailwind-lucide-inter > /app/.build-id",
     )
 )
 
