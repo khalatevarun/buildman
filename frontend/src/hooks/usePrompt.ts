@@ -2,6 +2,7 @@ import { useDispatch } from 'react-redux'
 import { toast } from 'sonner'
 import {
   appendChatOutput,
+  addAssistantMessage,
   pushActivity,
   finalizeMessage,
   addCheckpoint,
@@ -62,6 +63,10 @@ export function usePrompt(userId: string | null, projectId: string | null) {
         dispatch(appendChatOutput(outputBuffer))
         outputBuffer = ''
       }
+    }
+
+    const finishNameParsing = () => {
+      flushBuffer()
       nameParsed = true
     }
 
@@ -73,6 +78,9 @@ export function usePrompt(userId: string | null, projectId: string | null) {
       for (const line of lines) {
         try {
           const event = JSON.parse(line.slice(6))
+          if (event.type === 'new_turn') {
+            dispatch(addAssistantMessage())
+          }
           if (event.type === 'output') {
             if (!nameParsed) {
               outputBuffer += event.text
@@ -97,11 +105,11 @@ export function usePrompt(userId: string | null, projectId: string | null) {
             dispatch(pushActivity(event.text))
           }
           if (event.type === 'error') {
-            flushBuffer()
+            finishNameParsing()
             dispatch(appendChatOutput(`\n\n⚠️ ${event.text}`))
           }
           if (event.type === 'stopped') {
-            flushBuffer()
+            finishNameParsing()
             dispatch(clearQueue())
             dispatch(cancelLastExchange())
             dispatch(setPendingInput(text))
@@ -111,7 +119,7 @@ export function usePrompt(userId: string | null, projectId: string | null) {
           }
           if (event.type === 'env_needed') dispatch(setEnvNeeded(event.vars))
           if (event.type === 'done') {
-            flushBuffer()
+            finishNameParsing()
             gotDone = true
             dispatch(finalizeMessage([...activities]))
             if (event.commitHash) {
@@ -124,7 +132,7 @@ export function usePrompt(userId: string | null, projectId: string | null) {
     }
 
     if (!gotDone) {
-      flushBuffer()
+      finishNameParsing()
       dispatch(finalizeMessage([...activities]))
       dispatch(setStreaming(false))
     }

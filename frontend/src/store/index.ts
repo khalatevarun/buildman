@@ -6,6 +6,7 @@ interface ChatMessage {
   text: string
   activities: string[]
   stopped?: boolean
+  isFinal?: boolean
 }
 
 interface CheckpointEntry {
@@ -13,11 +14,10 @@ interface CheckpointEntry {
   timestamp: number
 }
 
-export interface EnvVar {
-  name: string
-  service: string | null
+export interface EnvVarGroup {
+  service: string
   url: string | null
-  hint: string | null
+  vars: string[]
 }
 
 interface AppState {
@@ -26,7 +26,7 @@ interface AppState {
   checkpoints: CheckpointEntry[]
   previewingHash: string | null
   streaming: boolean
-  envNeeded: EnvVar[] | null
+  envNeeded: EnvVarGroup[] | null
   deployedHash: string | null
   deployedUrl: string | null
   projectName: string | null
@@ -56,6 +56,9 @@ const appSlice = createSlice({
       state.messages.push({ role: 'user', text: action.payload, activities: [] })
       state.liveActivity = []
     },
+    addAssistantMessage(state) {
+      state.messages.push({ role: 'assistant', text: '', activities: [] })
+    },
     appendChatOutput(state, action: PayloadAction<string>) {
       const last = state.messages[state.messages.length - 1]
       if (last?.role === 'assistant') {
@@ -72,6 +75,7 @@ const appSlice = createSlice({
       const last = state.messages[state.messages.length - 1]
       if (last?.role === 'assistant') {
         last.activities = action.payload
+        last.isFinal = true
       }
       state.liveActivity = []
     },
@@ -84,7 +88,7 @@ const appSlice = createSlice({
     setStreaming(state, action: PayloadAction<boolean>) {
       state.streaming = action.payload
     },
-    setEnvNeeded(state, action: PayloadAction<EnvVar[] | null>) {
+    setEnvNeeded(state, action: PayloadAction<EnvVarGroup[] | null>) {
       state.envNeeded = action.payload
     },
     setDeployedHash(state, action: PayloadAction<string | null>) {
@@ -140,6 +144,7 @@ const appSlice = createSlice({
 
 export const {
   addUserMessage,
+  addAssistantMessage,
   appendChatOutput,
   pushActivity,
   finalizeMessage,

@@ -112,7 +112,7 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
     }
   }
 
-  let assistantCount = 0
+  let exchangeCount = 0
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -145,9 +145,9 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
             )
           }
 
-          const cpIndex = assistantCount
-          assistantCount++
-          const checkpoint = checkpoints[cpIndex]
+          const cpIndex = m.isFinal ? exchangeCount : -1
+          if (m.isFinal) exchangeCount++
+          const checkpoint = cpIndex >= 0 ? checkpoints[cpIndex] : undefined
           const isLastMessage = i === messages.length - 1
           const isActiveMessage = isLastMessage && streaming
           const tickerItems = isActiveMessage ? liveActivity : (m.activities ?? [])
@@ -211,7 +211,7 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
 
         {envNeeded && envNeeded.length > 0 && !streaming && (
           <div className="px-4">
-            <EnvVarCard vars={envNeeded} onSubmit={handleEnvSubmit} />
+            <EnvVarCard groups={envNeeded} onSubmit={handleEnvSubmit} />
           </div>
         )}
 
