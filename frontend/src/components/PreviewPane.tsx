@@ -209,7 +209,7 @@ export function PreviewPane({ previewUrl, streaming, isExpanded, onToggleExpand,
 
         {/* Streaming overlay */}
         {streaming && (
-          <div className="absolute inset-0 z-10 bg-background/80 backdrop-blur-[2px] flex items-center justify-center">
+          <div className="absolute inset-0 z-10 bg-black flex items-center justify-center">
             <div className="flex flex-col items-center gap-3">
               <div className="w-4 h-4 border-[1.5px] border-border border-t-muted-foreground rounded-full animate-spin" />
               <p className="text-muted-foreground/35 text-[11px] font-medium tracking-widest uppercase">

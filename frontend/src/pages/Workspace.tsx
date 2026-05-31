@@ -81,6 +81,12 @@ export function Workspace() {
 
   const { previewUrl, ensureSandbox } = useSandbox(userId)
   const { sendPrompt, stopPrompt } = usePrompt(userId, projectId ?? null)
+
+  useEffect(() => {
+    document.title = projectName ? `${projectName} | Buildman` : 'Buildman — Build apps with AI'
+    return () => { document.title = 'Buildman — Build apps with AI' }
+  }, [projectName])
+
   const prevStreamingRef = useRef(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [panelWidth, setPanelWidth] = useState(320)

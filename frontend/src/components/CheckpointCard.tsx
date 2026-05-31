@@ -21,6 +21,7 @@ function timeAgo(ts: number) {
   return `${Math.floor(s / 3600)}h ago`
 }
 
+
 function CopyIcon() {
   return (
     <svg width="11" height="11" viewBox="0 0 11 11" fill="none">

@@ -12,9 +12,12 @@ export function Home() {
   const [focused, setFocused] = useState(false)
   const [mousePos, setMousePos] = useState({ x: -9999, y: -9999 })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const hoveringInput = useRef(false)
 
   useEffect(() => {
-    const onMove = (e: MouseEvent) => setMousePos({ x: e.clientX, y: e.clientY })
+    const onMove = (e: MouseEvent) => {
+      if (!hoveringInput.current) setMousePos({ x: e.clientX, y: e.clientY })
+    }
     window.addEventListener('mousemove', onMove)
     return () => window.removeEventListener('mousemove', onMove)
   }, [])
@@ -85,7 +88,11 @@ export function Home() {
           Turn any idea into<br />a live app
         </h1>
 
-        <div className="w-full max-w-[520px] pointer-events-auto">
+        <div
+          className="w-full max-w-[520px] pointer-events-auto"
+          onMouseEnter={() => { hoveringInput.current = true; setMousePos({ x: -9999, y: -9999 }) }}
+          onMouseLeave={() => { hoveringInput.current = false }}
+        >
           <div
             className={`relative rounded-2xl overflow-hidden transition-all duration-200 bg-card border ${focused ? 'border-border/60 ring-2 ring-ring/20' : 'border-border'}`}
           >
