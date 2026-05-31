@@ -401,40 +401,19 @@ async def open_project(project_id: str, req: OpenProjectRequest):
     return StreamingResponse(stream(), media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
-def _wrap_prompt(text: str) -> str:
-    return (
-        "You are editing an existing Vite + React + TypeScript project in /workspace. "
-        "Read CLAUDE.md first — it defines the full tech stack and every coding rule.\n\n"
-
-        "TECH STACK REMINDER (all pre-installed, no npm install needed):\n"
-        "- Tailwind CSS v4 for all styling — never write inline styles or custom CSS\n"
-        "- lucide-react for all icons — never use emoji as icons\n"
-        "- sonner for toasts — toast.success(), toast.error(), toast.promise()\n"
-        "- motion/react for animations — motion.div, useAnimate, etc.\n"
-        "- react-router-dom v6 for routing when the app needs multiple pages\n"
-        "- cn() from @/lib/utils for conditional Tailwind classes\n"
-        "- CSS custom properties: bg-background, bg-card, bg-muted, text-foreground, text-muted-foreground, "
-        "text-primary, border-border, bg-primary, bg-destructive — use these, never hardcode colors\n\n"
-
-        "DESIGN QUALITY STANDARDS (every output must meet these):\n"
-        "- Mobile-first: every layout must work at 375px width; use sm: md: lg: breakpoints\n"
-        "- Spacing: generous padding (p-6 p-8), consistent gap (gap-4 gap-6) — never cramped\n"
-        "- Typography: font-bold tracking-tight for headings; text-muted-foreground for supporting text\n"
-        "- Interactions: every button/link must have hover: and active: states with transition-colors\n"
-        "- Cards: rounded-xl border border-border bg-card shadow-sm — always\n"
-        "- Empty states: never show a blank area — always show a helpful empty state with an icon\n"
-        "- Loading states: show skeletons or spinners (Loader2 from lucide + animate-spin) during async ops\n"
-        "- The app should look like it was designed by a professional designer, not a developer\n\n"
-
-        "STRICT RULES FOR YOUR REPLY TEXT (violating these is a failure):\n"
+def _wrap_prompt(text: str, is_first_prompt: bool = False) -> str:
+    name_rule = (
         "- VERY FIRST TOKENS: Write exactly <name>2-4 word title</name> on its own line before anything else. "
         "Title-case the name. Describe the app in 2-4 words (e.g. <name>Multi Timer App</name>). "
         "This tag is stripped before display — it is only for internal bookkeeping.\n"
-        "- Write 2-3 sentences max. No more.\n"
+    ) if is_first_prompt else "- Do NOT emit a <name> tag.\n"
+
+    return (
+        "STRICT RULES FOR YOUR REPLY TEXT (violating these is a failure):\n"
+        f"{name_rule}"
         "- Never mention file names, paths, components, JSX, CSS, or any technical term.\n"
-        "- Never mention environment variables, .env files, or placeholder values like __NEEDS_USER_VALUE__.\n"
+        "- Never mention environment variables or .env files in your reply text.\n"
         "- If the app needs an API key, say only: 'You'll be prompted to add your API key to complete the setup.'\n"
-        "- Never narrate what you are about to do.\n"
         "- Never tell the user to open a browser, refresh, or take any action.\n"
         "- Speak only about what the user can now SEE or DO in their app, in plain everyday English.\n"
         "- Write as if describing the finished thing to a friend who has never written code.\n\n"
@@ -452,23 +431,20 @@ async def send_prompt(req: PromptRequest):
     sandbox_id = session["sandbox_id"]
     project_id = session.get("project_id")
 
+    prompt_count = session.get("prompt_count", 0)
+    is_first_prompt = prompt_count == 0
+    session["prompt_count"] = prompt_count + 1
+    await sessions.put.aio(req.user_id, session)
+
     async def stream():
         prompt_timeout = httpx.Timeout(connect=30.0, read=1800.0, write=30.0, pool=30.0)
         done_seen = False
         async with httpx.AsyncClient(timeout=prompt_timeout) as client:
             async with client.stream(
-                "POST", f"{agent_url}/prompt", json={"text": _wrap_prompt(req.text)}
+                "POST", f"{agent_url}/prompt", json={"text": _wrap_prompt(req.text, is_first_prompt=is_first_prompt)}
             ) as r:
                 async for chunk in r.aiter_text():
                     yield chunk
-                    # After the done event fires, take a background filesystem snapshot
-                    # so the next open_project can restore instantly.
-                    # snapshot_filesystem() docs: https://modal.com/docs/guide/sandbox-snapshots
-                    if not done_seen and project_id and '"type": "done"' in chunk:
-                        done_seen = True
-                        asyncio.create_task(
-                            _take_snapshot(req.user_id, sandbox_id, project_id)
-                        )
 
     return StreamingResponse(
         stream(),
@@ -588,7 +564,9 @@ async def save_chat(project_id: str, req: SaveChatRequest):
         r = await client.post(f"{session['agent_url']}/save-chat", json={"messages": req.messages, "checkpoints": req.checkpoints})
         if r.status_code >= 400:
             raise HTTPException(status_code=r.status_code, detail=r.text)
-        return r.json()
+    # Chat is now on disk — safe to snapshot. Fire-and-forget.
+    asyncio.create_task(_take_snapshot(req.user_id, session["sandbox_id"], project_id))
+    return {"ok": True}
 
 
 @app.get("/projects/{project_id}/chat")
@@ -623,10 +601,11 @@ async def destroy_sandbox_endpoint(user_id: str):
 
 @app.delete("/projects/{project_id}")
 async def delete_project(project_id: str, user_id: str):
-    # Collect snapshot_id before removing from list
+    # Collect metadata before removing from list
     projects = await project_list_store.get.aio(user_id) or []
     project = next((p for p in projects if p["project_id"] == project_id), None)
     snapshot_id = project.get("snapshot_id") if project else None
+    netlify_site_id = project.get("netlify_site_id") if project else None
 
     # Terminate sandbox if it's running this project
     session = await sessions.get.aio(user_id)
@@ -651,5 +630,22 @@ async def delete_project(project_id: str, user_id: str):
             except Exception:
                 pass
         await asyncio.to_thread(_delete_snapshot)
+
+    # Delete the Netlify site if one was created for this project
+    if netlify_site_id:
+        import subprocess
+        token = os.environ.get("NETLIFY_AUTH_TOKEN")
+        if token:
+            try:
+                await asyncio.to_thread(
+                    lambda: subprocess.run(
+                        ["netlify", "sites:delete", netlify_site_id, "--force"],
+                        env={**os.environ, "NETLIFY_AUTH_TOKEN": token},
+                        capture_output=True,
+                        timeout=30,
+                    )
+                )
+            except Exception:
+                pass  # best effort — don't fail the delete if Netlify cleanup fails
 
     return {"ok": True}
