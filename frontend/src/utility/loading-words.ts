@@ -14,7 +14,3 @@ export const LOADING_WORDS = [
   'Spinning up', 'Synthesizing', 'Thinking', 'Transpiling', 'Tweaking',
   'Unifying', 'Updating', 'Validating', 'Weaving', 'Wiring', 'Writing',
 ]
-
-export function randomWord() {
-  return LOADING_WORDS[Math.floor(Math.random() * LOADING_WORDS.length)]
-}

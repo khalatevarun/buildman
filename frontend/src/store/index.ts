@@ -128,15 +128,6 @@ const appSlice = createSlice({
     setPendingInput(state, action: PayloadAction<string | null>) {
       state.pendingInput = action.payload
     },
-    // Truncates messages and checkpoints to only those up to (and including) the given hash.
-    // checkpoint[i] pairs with the (i+1)-th assistant message, so keep 2*(i+1) messages.
-    truncateToCheckpoint(state, action: PayloadAction<string>) {
-      const i = state.checkpoints.findIndex(cp => cp.hash === action.payload)
-      if (i === -1) return
-      state.checkpoints = state.checkpoints.slice(0, i + 1)
-      state.messages = state.messages.slice(0, 2 * (i + 1))
-      state.previewingHash = null
-    },
     setAssistantFinalText(state, action: PayloadAction<string>) {
       const last = state.messages[state.messages.length - 1]
       if (last?.role === 'assistant') {
@@ -164,7 +155,6 @@ export const {
   setDeployedUrl,
   setProjectName,
   restoreHistory,
-  truncateToCheckpoint,
   resetWorkspace,
   enqueuePrompt,
   dequeuePrompt,

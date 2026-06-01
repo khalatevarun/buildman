@@ -574,16 +574,6 @@ async def load_chat(project_id: str, user_id: str):
         return r.json()
 
 
-@app.get("/vite-logs")
-async def vite_logs(user_id: str):
-    session = await sessions.get.aio(user_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="No active sandbox.")
-    async with httpx.AsyncClient(timeout=5) as client:
-        r = await client.get(f"{session['agent_url']}/vite-logs")
-        return r.json()
-
-
 @app.delete("/sandbox")
 async def destroy_sandbox_endpoint(user_id: str):
     session = await sessions.get.aio(user_id)

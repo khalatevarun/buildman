@@ -1,12 +1,3 @@
-export const EXAMPLES = [
-  'A mood journal that generates a matching Spotify playlist',
-  'A live group chat app backed by Supabase Realtime',
-  'An AI debate arena where two models argue a topic via OpenRouter',
-  'A GitHub repo analyzer with brutal feedback using OpenAI',
-  'A daily weather haiku using OpenWeatherMap and OpenAI',
-  'A crypto portfolio tracker with live prices from CoinGecko',
-]
-
 export const SCATTERED = [
   // row 1
   { x: 4,   y: 4,  text: 'Mood journal → Spotify playlist via Spotify API' },

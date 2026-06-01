@@ -156,6 +156,4 @@ The FastAPI function runs with `min_containers=1` (always-warm) and `timeout=180
 - **Prewarm is invisible** — prewarm sandboxes are never added to `buildman-project-list`; the project only appears in the list after the user submits a prompt (via PATCH rename)
 - **`cancelPrewarm()` must be called on Home unmount** — otherwise the prewarm sandbox leaks; it calls `DELETE /sandbox` only if the prewarm was never consumed
 - **Per-project Netlify sites** — each project deploys to its own Netlify site; `deployed_hash` and `deployed_url` are stored in the project metadata and returned on sandbox open/status
-- `volume_manager.py` is dead code — ignore it
-- `useCheckpoints.ts` and `CheckpointList.tsx` in the frontend are unused
 - Frontend uses native `fetch` (not axios) for SSE endpoints because axios does not support streaming SSE

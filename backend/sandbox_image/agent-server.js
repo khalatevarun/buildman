@@ -22,21 +22,11 @@ const OC_BASE = `http://127.0.0.1:${OC_PORT}`
 const OC_PROVIDER = 'opencode'
 const OC_MODEL = 'deepseek-v4-flash-free'
 
-// Rolling buffer of Vite stdout/stderr — last 150 lines, in-memory only
-const VITE_LOG = []
-function pushViteLog(line) {
-  if (!line) return
-  VITE_LOG.push(line)
-  if (VITE_LOG.length > 150) VITE_LOG.shift()
-}
-
 function spawnVite() {
   const proc = spawn('npm', ['run', 'dev', '--', '--host', '0.0.0.0', '--port', '5173'], {
     cwd: WORKSPACE,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', 'ignore', 'ignore'],
   })
-  proc.stdout.on('data', d => d.toString().split('\n').forEach(pushViteLog))
-  proc.stderr.on('data', d => d.toString().split('\n').forEach(pushViteLog))
   proc.unref()
 }
 
@@ -366,15 +356,6 @@ app.post('/init-workspace', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
-})
-
-app.get('/vite-logs', (req, res) => {
-  const recent = VITE_LOG.slice(-50).join('\n')
-  const ENV_RE = /import\.meta\.env\.\w+ is not defined|VITE_[A-Z_]+.*undefined|401|403|api.?key.*undefined/i
-  const CODE_RE = /SyntaxError|Cannot find module|Transform failed|Failed to compile/i
-  const isEnvError = ENV_RE.test(recent)
-  const isCodeError = !isEnvError && CODE_RE.test(recent)
-  res.json({ logs: recent, isEnvError, isCodeError })
 })
 
 app.post('/save-chat', (req, res) => {
