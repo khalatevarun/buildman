@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, memo } from 'react'
 import { Link } from 'react-router-dom'
 import { useSelector, useDispatch } from 'react-redux'
 import ReactMarkdown from 'react-markdown'
@@ -23,6 +23,24 @@ interface Props {
   onDeploy: (hash: string) => Promise<string>
   projectName: string | null
 }
+
+const ThinkingText = memo(function ThinkingText({ text }: { text: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight
+  }, [text])
+  return (
+    <div
+      ref={ref}
+      className="max-h-[72px] overflow-y-hidden"
+      style={{ scrollbarWidth: 'none' }}
+    >
+      <div className="text-[10.5px] leading-relaxed text-muted-foreground/35 font-mono whitespace-pre-wrap break-words">
+        {text}
+      </div>
+    </div>
+  )
+})
 
 function ThinkingDots({ word }: { word: string }) {
   return (
@@ -155,23 +173,33 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
           return (
             <div key={i} className="flex flex-col gap-2">
               <div className="px-4">
-                {isActiveMessage && !m.text && liveActivity.length === 0 ? (
-                  <ThinkingDots word={thinkingWord} />
-                ) : (
-                  <div className={`
-                    text-[13px] leading-[1.65] text-foreground/75
-                    prose prose-invert prose-sm max-w-none
-                    prose-p:my-[0.4em] prose-p:text-foreground/75 prose-p:leading-[1.65]
-                    prose-headings:text-foreground/85 prose-headings:font-heading prose-headings:font-semibold prose-headings:tracking-tight
-                    prose-strong:text-foreground/90 prose-strong:font-semibold
-                    prose-code:text-primary prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-[11.5px] prose-code:font-mono prose-code:before:content-none prose-code:after:content-none
-                    prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-pre:rounded-lg prose-pre:text-[11.5px]
-                    prose-ul:text-foreground/70 prose-li:text-foreground/70 prose-li:my-[0.2em]
-                    prose-a:text-primary prose-a:no-underline hover:prose-a:underline
-                  `}>
-                    <ReactMarkdown>{m.text}</ReactMarkdown>
-                  </div>
-                )}
+                {(() => {
+                  const thinkingText = isActiveMessage ? m.text : null
+                  return (
+                    <>
+                      {thinkingText ? (
+                        <ThinkingText text={thinkingText} />
+                      ) : isActiveMessage && liveActivity.length === 0 ? (
+                        <ThinkingDots word={thinkingWord} />
+                      ) : null}
+                      {!isActiveMessage && m.text && (
+                        <div className={`
+                          text-[13px] leading-[1.65] text-foreground/75
+                          prose prose-invert prose-sm max-w-none
+                          prose-p:my-[0.4em] prose-p:text-foreground/75 prose-p:leading-[1.65]
+                          prose-headings:text-foreground/85 prose-headings:font-heading prose-headings:font-semibold prose-headings:tracking-tight
+                          prose-strong:text-foreground/90 prose-strong:font-semibold
+                          prose-code:text-primary prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-[11.5px] prose-code:font-mono prose-code:before:content-none prose-code:after:content-none
+                          prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-pre:rounded-lg prose-pre:text-[11.5px]
+                          prose-ul:text-foreground/70 prose-li:text-foreground/70 prose-li:my-[0.2em]
+                          prose-a:text-primary prose-a:no-underline hover:prose-a:underline
+                        `}>
+                          <ReactMarkdown>{m.text}</ReactMarkdown>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
 
               {tickerItems.length > 0 && (

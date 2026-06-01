@@ -7,6 +7,7 @@ interface ChatMessage {
   activities: string[]
   stopped?: boolean
   isFinal?: boolean
+  thinking?: string
 }
 
 interface CheckpointEntry {
@@ -136,6 +137,13 @@ const appSlice = createSlice({
       state.messages = state.messages.slice(0, 2 * (i + 1))
       state.previewingHash = null
     },
+    setAssistantFinalText(state, action: PayloadAction<string>) {
+      const last = state.messages[state.messages.length - 1]
+      if (last?.role === 'assistant') {
+        last.thinking = last.text
+        last.text = action.payload
+      }
+    },
     resetWorkspace() {
       return initialState
     },
@@ -164,6 +172,7 @@ export const {
   clearQueue,
   cancelLastExchange,
   setPendingInput,
+  setAssistantFinalText,
 } = appSlice.actions
 
 export const store = configureStore({ reducer: { app: appSlice.reducer } })

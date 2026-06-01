@@ -13,8 +13,20 @@ import {
   clearQueue,
   cancelLastExchange,
   setPendingInput,
+  setAssistantFinalText,
   store,
 } from '../store'
+
+function extractLastSentence(text: string): string {
+  const trimmed = text.trim()
+  if (!trimmed) return trimmed
+  const parts = trimmed.split(/(?<=[.!?])\s+/)
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const s = parts[i].trim()
+    if (s.length > 15) return s
+  }
+  return parts[parts.length - 1].trim()
+}
 import { api, API_URL } from '../utility/api'
 
 export function usePrompt(userId: string | null, projectId: string | null) {
@@ -57,6 +69,7 @@ export function usePrompt(userId: string | null, projectId: string | null) {
     const isFirstMessage = store.getState().app.messages.filter(m => m.role === 'user').length === 1
     let nameParsed = !isFirstMessage
     let outputBuffer = ''
+    let fullOutput = ''
 
     const flushBuffer = () => {
       if (outputBuffer) {
@@ -82,6 +95,7 @@ export function usePrompt(userId: string | null, projectId: string | null) {
             dispatch(addAssistantMessage())
           }
           if (event.type === 'output') {
+            fullOutput += event.text
             if (!nameParsed) {
               outputBuffer += event.text
               const match = outputBuffer.match(/<name>(.*?)<\/name>/)
@@ -121,6 +135,8 @@ export function usePrompt(userId: string | null, projectId: string | null) {
           if (event.type === 'done') {
             finishNameParsing()
             gotDone = true
+            const lastSentence = extractLastSentence(fullOutput)
+            if (lastSentence) dispatch(setAssistantFinalText(lastSentence))
             dispatch(finalizeMessage([...activities]))
             if (event.commitHash) {
               dispatch(addCheckpoint({ hash: event.commitHash, timestamp: Date.now() }))
