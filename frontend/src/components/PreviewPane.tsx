@@ -1,17 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { GlobeIcon } from '@phosphor-icons/react'
 import { LOADING_WORDS } from '../utility/loading-words'
 import { BuildmanSpinner } from './BuildmanSpinner'
-
-function GlobeIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 13 13" fill="none">
-      <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3"/>
-      <ellipse cx="6.5" cy="6.5" rx="2" ry="5" stroke="currentColor" strokeWidth="1.3"/>
-      <path d="M1.5 6.5h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-      <path d="M2.5 4h8M2.5 9h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-    </svg>
-  )
-}
 
 function ReloadIcon() {
   return (
@@ -170,7 +160,7 @@ export function PreviewPane({ previewUrl, streaming, isExpanded, onToggleExpand,
             title={deployedUrl}
             className="flex items-center justify-center w-7 h-6 rounded text-muted-foreground hover:text-foreground transition-colors duration-100"
           >
-            <GlobeIcon />
+            <GlobeIcon size={15} />
           </a>
         ) : (
           <button
@@ -178,7 +168,7 @@ export function PreviewPane({ previewUrl, streaming, isExpanded, onToggleExpand,
             title="Publish your app to get a shareable link"
             className="flex items-center justify-center w-7 h-6 rounded text-muted-foreground/25 cursor-not-allowed"
           >
-            <GlobeIcon />
+            <GlobeIcon size={15} />
           </button>
         )}
 

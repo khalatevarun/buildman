@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { GlobeIcon } from '@phosphor-icons/react'
 import type { Project } from '../hooks/useProjects'
 import { api } from '../utility/api'
 import { toast } from 'sonner'
@@ -21,7 +22,7 @@ function timeAgo(ts: number) {
 
 function TrashIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+    <svg width="15" height="15" viewBox="0 0 13 13" fill="none">
       <path d="M1.5 3.5h10M4.5 3.5V2.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1M5.5 6v3.5M7.5 6v3.5M2.5 3.5l.75 7a1 1 0 0 0 1 .9h4.5a1 1 0 0 0 1-.9l.75-7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )
@@ -86,12 +87,10 @@ export function ProjectList({ projects, userId, onOpen, onDelete }: Props) {
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={e => e.stopPropagation()}
-                  className="shrink-0 flex items-center justify-center w-4 h-4 text-primary/60 hover:text-primary transition-colors duration-100"
+                  className="shrink-0 flex items-center justify-center w-5 h-5 text-primary/60 hover:text-primary transition-colors duration-100"
                   title={project.deployed_url}
                 >
-                  <svg width="12" height="12" viewBox="0 0 11 11" fill="none">
-                    <path d="M4.5 2H2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V6.5M7 1h3m0 0v3m0-3L5 6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                  <GlobeIcon size={15} />
                 </a>
               ) : (
                 <span className="w-1.5 h-1.5 rounded-full shrink-0 mt-0.5 bg-foreground/15" />
