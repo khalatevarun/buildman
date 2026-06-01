@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from '@clerk/clerk-react'
 import { useSandbox } from '../hooks/useSandbox'
+import { BuildmanSpinner } from '../components/BuildmanSpinner'
 import { SCATTERED } from '../data/prompts'
 
 export function Home() {
@@ -123,10 +124,7 @@ export function Home() {
                 className={`flex items-center justify-center w-8 h-8 rounded-xl transition-all duration-150 disabled:cursor-not-allowed ${prompt.trim() && !isLoading ? 'bg-primary text-primary-foreground hover:brightness-110' : 'bg-muted text-muted-foreground'}`}
               >
                 {isLoading ? (
-                  <span
-                    className="w-3.5 h-3.5 rounded-full border-[1.5px] border-primary-foreground/30 border-t-transparent"
-                    style={{ animation: 'spin 0.7s linear infinite' }}
-                  />
+                  <BuildmanSpinner size={14} className="text-muted-foreground" />
                 ) : (
                   <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
                     <path

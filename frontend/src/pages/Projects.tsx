@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { SignedIn, SignedOut, UserButton, useUser } from '@clerk/clerk-react'
 import { useProjects } from '../hooks/useProjects'
+import { BuildmanSpinner } from '../components/BuildmanSpinner'
 import { ProjectList } from '../components/ProjectList'
 
 export function Projects() {
@@ -67,10 +68,7 @@ export function Projects() {
 
             {loading ? (
               <div className="flex items-center justify-center py-20">
-                <span
-                  className="w-4 h-4 rounded-full border border-border border-t-muted-foreground"
-                  style={{ animation: 'spin 0.8s linear infinite' }}
-                />
+                <BuildmanSpinner size={24} className="text-muted-foreground/50" />
               </div>
             ) : projects.length === 0 ? (
               <div className="flex flex-col items-center py-20 gap-4">
