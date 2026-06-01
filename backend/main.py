@@ -399,14 +399,21 @@ async def open_project(project_id: str, req: OpenProjectRequest):
     return StreamingResponse(stream(), media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
+_AGENT_RULES = (
+    "Never tell the user to run any commands (e.g. 'npm run dev', 'npm start', 'node server.js'). "
+    "You are an agent running inside a sandbox where the dev server is already running — "
+    "the user sees a live preview automatically. Just describe what you built.\n\n"
+)
+
 def _wrap_prompt(text: str, is_first_prompt: bool = False) -> str:
     if is_first_prompt:
         return (
             "Begin your reply with exactly `<name>2-4 word title</name>` on its own line "
             "before anything else. Title-case it (e.g. `<name>Todo List App</name>`).\n\n"
-            f"{text}"
+            + _AGENT_RULES
+            + text
         )
-    return text
+    return _AGENT_RULES + text
 
 
 @app.post("/prompt")
