@@ -135,20 +135,19 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Nav header */}
-      <div className="flex items-center justify-between px-4 py-2.5 shrink-0 border-b border-border">
+      <div className="flex items-center justify-between px-4 h-10 shrink-0 border-b border-border">
         <Link
           to="/projects"
-          className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors duration-150 no-underline"
+          className="flex items-center text-foreground hover:text-white transition-colors duration-150 no-underline"
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path d="M6.5 1.5L2 5l4.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          Projects
         </Link>
-        <span className="text-[11px] font-semibold tracking-tight text-muted-foreground/60 font-heading truncate max-w-[140px]">
+        <span className="text-[11px] font-semibold tracking-tight text-foreground/85 font-heading truncate max-w-[180px]">
           {projectName ?? 'Buildman'}
         </span>
-        <div className="w-[52px]" />
+        <div className="w-[10px]" />
       </div>
       {/* Messages */}
       <div className="flex-1 overflow-y-auto py-5 space-y-5" style={{ scrollbarWidth: 'none' }}>
