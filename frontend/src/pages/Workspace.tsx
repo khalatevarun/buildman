@@ -12,53 +12,6 @@ import { PreviewPane } from '../components/PreviewPane'
 import { RestoreConfirmDialog } from '../components/RestoreConfirmDialog'
 import { api } from '../utility/api'
 
-interface DeployedUrlBarProps {
-  deployedUrl: string | null
-  publishingLabel: string | null
-}
-
-function DeployedUrlBar({ deployedUrl, publishingLabel }: DeployedUrlBarProps) {
-  const [copied, setCopied] = useState(false)
-
-  if (!deployedUrl && !publishingLabel) return null
-
-  const handleCopy = () => {
-    if (!deployedUrl) return
-    navigator.clipboard.writeText(deployedUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1800)
-  }
-
-  if (publishingLabel) {
-    return (
-      <div className="flex items-center justify-center gap-2.5 px-4 py-2 shrink-0 bg-primary">
-        <span className="w-3 h-3 rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground animate-spin shrink-0" />
-        <span className="text-[11px] font-medium text-primary-foreground">{publishingLabel}</span>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex items-center justify-center gap-3 px-4 py-2 shrink-0 bg-primary">
-      <span className="text-[11px] font-medium text-primary-foreground/80">Published</span>
-      <a
-        href={deployedUrl!}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-[11px] font-medium text-primary-foreground hover:text-primary-foreground/80 transition-colors duration-100 truncate max-w-xs"
-      >
-        {deployedUrl!.replace('https://', '')}
-      </a>
-      <button
-        onClick={handleCopy}
-        title="Copy link"
-        className="text-[11px] px-2 py-0.5 rounded transition-colors duration-100 shrink-0 bg-primary-foreground/15 hover:bg-primary-foreground/25 text-primary-foreground"
-      >
-        {copied ? 'Copied!' : 'Copy'}
-      </button>
-    </div>
-  )
-}
 
 function timeAgo(ts: number) {
   const s = Math.floor((Date.now() - ts) / 1000)
@@ -200,10 +153,15 @@ export function Workspace() {
       const r = await api.post<{ url: string; deployedHash: string }>('/deploy', { user_id: userId, hash })
       dispatch(setDeployedHash(r.data.deployedHash))
       dispatch(setDeployedUrl(r.data.url))
-      return r.data.url
+      const publishedUrl = r.data.url
+      toast.success(
+        projectName ? `"${projectName}" is live on the internet` : 'App is live on the internet',
+        { action: { label: 'Open', onClick: () => window.open(publishedUrl, '_blank') } }
+      )
+      return publishedUrl
     } catch (err: any) {
       const msg = err?.response?.data?.detail || err?.response?.data?.error || err?.message || null
-      toast.error(msg || 'Publish failed — try again')
+      toast.error(msg || (projectName ? `Couldn't publish "${projectName}" — try again` : 'Publish failed — try again'))
       throw err
     } finally {
       setPublishingHash(null)
@@ -216,7 +174,7 @@ export function Workspace() {
       await api.post('/preview-exit', null, { params: { user_id: userId } })
       dispatch(setPreviewingHash(null))
     } catch {
-      toast.error("Couldn't exit preview mode")
+      toast.error("Couldn't exit preview mode — try refreshing")
     }
   }
 
@@ -229,7 +187,7 @@ export function Workspace() {
         await api.post('/preview', { user_id: userId, hash })
         dispatch(setPreviewingHash(hash))
       } catch {
-        toast.error("Couldn't switch version")
+        toast.error("Couldn't switch to that version — try again")
       }
     }
   }
@@ -245,7 +203,7 @@ export function Workspace() {
       }
       dispatch(setPreviewingHash(null))
     } catch {
-      toast.error('Restore failed — try again')
+      toast.error('Restore failed — try refreshing the page')
     }
   }
 
@@ -285,16 +243,6 @@ export function Workspace() {
                 </div>
               </div>
             )}
-            <DeployedUrlBar
-              deployedUrl={publishingHash ? null : deployedUrl}
-              publishingLabel={(() => {
-                if (!publishingHash) return null
-                const vIdx = checkpoints.findIndex(cp => cp.hash === publishingHash)
-                const vNum = vIdx >= 0 ? vIdx + 1 : checkpoints.length
-                const name = projectName ? ` of ${projectName}` : ''
-                return `Publishing v${vNum}${name}…`
-              })()}
-            />
           </>
         )
       })()}
@@ -337,6 +285,8 @@ export function Workspace() {
             checkpoints={checkpoints}
             previewingHash={previewingHash}
             onVersionChange={handleVersionChange}
+            deployedUrl={deployedUrl}
+            publishing={!!publishingHash}
           />
           {/* Blocks iframe from stealing mouse events while the divider is being dragged */}
           {isDragging && (

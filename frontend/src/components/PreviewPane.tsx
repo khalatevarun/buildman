@@ -1,9 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { LOADING_WORDS } from '../utility/loading-words'
+import { BuildmanSpinner } from './BuildmanSpinner'
+
+function GlobeIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 13 13" fill="none">
+      <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3"/>
+      <ellipse cx="6.5" cy="6.5" rx="2" ry="5" stroke="currentColor" strokeWidth="1.3"/>
+      <path d="M1.5 6.5h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+      <path d="M2.5 4h8M2.5 9h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+    </svg>
+  )
+}
 
 function ReloadIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+    <svg width="15" height="15" viewBox="0 0 13 13" fill="none">
       <path d="M2 6.5a4.5 4.5 0 1 1 1.32 3.18" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
       <path d="M2 10.5V7h3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
@@ -12,7 +24,7 @@ function ReloadIcon() {
 
 function ExpandIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+    <svg width="15" height="15" viewBox="0 0 13 13" fill="none">
       <path d="M8 1.5h3.5V5M5 11.5H1.5V8M11.5 1.5l-4 4M1.5 11.5l4-4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )
@@ -20,7 +32,7 @@ function ExpandIcon() {
 
 function CollapseIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+    <svg width="15" height="15" viewBox="0 0 13 13" fill="none">
       <path d="M5 1.5v3.5H1.5M8 11.5V8h3.5M5 5L1.5 1.5M8 8l3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )
@@ -28,7 +40,7 @@ function CollapseIcon() {
 
 function DesktopIcon({ active }: { active: boolean }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <svg width="16" height="16" viewBox="0 0 14 14" fill="none">
       <rect x="1" y="2" width="12" height="8" rx="1.2" stroke="currentColor" strokeWidth={active ? 1.6 : 1.3}/>
       <path d="M5 10.5h4M7 10.5V12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
     </svg>
@@ -37,7 +49,7 @@ function DesktopIcon({ active }: { active: boolean }) {
 
 function MobileIcon({ active }: { active: boolean }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <svg width="16" height="16" viewBox="0 0 14 14" fill="none">
       <rect x="4" y="1" width="6" height="12" rx="1.2" stroke="currentColor" strokeWidth={active ? 1.6 : 1.3}/>
       <circle cx="7" cy="11" r="0.6" fill="currentColor"/>
     </svg>
@@ -57,9 +69,11 @@ interface Props {
   checkpoints: Checkpoint[]
   previewingHash: string | null
   onVersionChange: (hash: string | null) => void
+  deployedUrl: string | null
+  publishing: boolean
 }
 
-export function PreviewPane({ previewUrl, streaming, isExpanded, onToggleExpand, checkpoints, previewingHash, onVersionChange }: Props) {
+export function PreviewPane({ previewUrl, streaming, isExpanded, onToggleExpand, checkpoints, previewingHash, onVersionChange, deployedUrl, publishing }: Props) {
   const [loadingWord, setLoadingWord] = useState('')
   const [rotatingWord, setRotatingWord] = useState(() => LOADING_WORDS[Math.floor(Math.random() * LOADING_WORDS.length)])
   const [viewport, setViewport] = useState<'desktop' | 'mobile'>('desktop')
@@ -103,7 +117,7 @@ export function PreviewPane({ previewUrl, streaming, isExpanded, onToggleExpand,
           <div className="flex-1" />
         </div>
         <div className="flex flex-col items-center justify-center flex-1 bg-background gap-3">
-          <div className="w-4 h-4 border-2 border-border border-t-muted-foreground rounded-full animate-spin" />
+          <BuildmanSpinner size={20} className="text-muted-foreground/70" />
           <p className="text-muted-foreground/40 text-[12px] font-medium tracking-widest uppercase">
             {rotatingWord}…
           </p>
@@ -121,7 +135,7 @@ export function PreviewPane({ previewUrl, streaming, isExpanded, onToggleExpand,
         <button
           onClick={() => setViewport('desktop')}
           title="Desktop view"
-          className={`flex items-center justify-center w-7 h-6 rounded transition-colors duration-100 ${
+          className={`flex items-center justify-center w-8 h-7 rounded transition-colors duration-100 ${
             viewport === 'desktop'
               ? 'text-foreground bg-muted'
               : 'text-muted-foreground hover:text-foreground'
@@ -132,7 +146,7 @@ export function PreviewPane({ previewUrl, streaming, isExpanded, onToggleExpand,
         <button
           onClick={() => setViewport('mobile')}
           title="Mobile view"
-          className={`flex items-center justify-center w-7 h-6 rounded transition-colors duration-100 ${
+          className={`flex items-center justify-center w-8 h-7 rounded transition-colors duration-100 ${
             viewport === 'mobile'
               ? 'text-foreground bg-muted'
               : 'text-muted-foreground hover:text-foreground'
@@ -142,6 +156,31 @@ export function PreviewPane({ previewUrl, streaming, isExpanded, onToggleExpand,
         </button>
 
         <div className="flex-1" />
+
+        {/* Globe — published link */}
+        {publishing ? (
+          <div className="flex items-center justify-center w-7 h-6">
+            <BuildmanSpinner size={13} className="text-muted-foreground/70" />
+          </div>
+        ) : deployedUrl ? (
+          <a
+            href={deployedUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={deployedUrl}
+            className="flex items-center justify-center w-7 h-6 rounded text-muted-foreground hover:text-foreground transition-colors duration-100"
+          >
+            <GlobeIcon />
+          </a>
+        ) : (
+          <button
+            disabled
+            title="Publish your app to get a shareable link"
+            className="flex items-center justify-center w-7 h-6 rounded text-muted-foreground/25 cursor-not-allowed"
+          >
+            <GlobeIcon />
+          </button>
+        )}
 
         {/* Version dropdown */}
         {checkpoints.length > 0 && (
@@ -211,8 +250,8 @@ export function PreviewPane({ previewUrl, streaming, isExpanded, onToggleExpand,
         {streaming && (
           <div className="absolute inset-0 z-10 bg-black flex items-center justify-center">
             <div className="flex flex-col items-center gap-3">
-              <div className="w-4 h-4 border-[1.5px] border-border border-t-muted-foreground rounded-full animate-spin" />
-              <p className="text-muted-foreground/35 text-[11px] font-medium tracking-widest uppercase">
+              <BuildmanSpinner size={20} className="text-white/70" />
+              <p className="text-white/30 text-[11px] font-medium tracking-widest uppercase">
                 {loadingWord}…
               </p>
             </div>

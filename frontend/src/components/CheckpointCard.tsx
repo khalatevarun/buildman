@@ -139,36 +139,6 @@ export function CheckpointCard({ hash, timestamp, versionNumber, totalVersions, 
         )}
       </div>
 
-      {/* Deployed URL row */}
-      {live && deployedUrl && (
-        <div className="ml-6 flex items-center gap-2">
-          <a
-            href={deployedUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11px] truncate text-primary/55 hover:text-primary/85 transition-colors duration-100"
-            style={{ maxWidth: '180px' }}
-          >
-            {deployedUrl.replace('https://', '')}
-          </a>
-          <button
-            onClick={handleCopy}
-            title="Copy link"
-            className={`flex items-center justify-center w-4 h-4 rounded transition-colors duration-100 ${copied ? 'text-primary/80' : 'text-foreground/20 hover:text-foreground/55'}`}
-          >
-            {copied ? '✓' : <CopyIcon />}
-          </button>
-          <a
-            href={deployedUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Open in new tab"
-            className="flex items-center justify-center w-4 h-4 rounded transition-colors duration-100 text-foreground/20 hover:text-foreground/55"
-          >
-            <ExternalIcon />
-          </a>
-        </div>
-      )}
     </div>
     </>
   )
