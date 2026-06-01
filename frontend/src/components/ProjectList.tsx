@@ -43,12 +43,13 @@ export function ProjectList({ projects, userId, onOpen, onDelete }: Props) {
   }
 
   const handleDeleteConfirm = async (projectId: string) => {
+    const name = projects.find(p => p.project_id === projectId)?.name
     setConfirmId(null)
     setDeletingId(projectId)
     try {
       await api.delete(`/projects/${projectId}`, { params: { user_id: userId } })
       onDelete(projectId)
-      toast.success('Project deleted')
+      toast.success(name ? `"${name}" has been permanently deleted` : 'Project deleted')
     } finally {
       setDeletingId(null)
     }
