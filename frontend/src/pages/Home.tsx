@@ -70,10 +70,10 @@ export function Home() {
 
           <SignedIn>
             <Link
-              to="/projects"
+              to="/apps"
               className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-border/60 transition-colors duration-150 no-underline"
             >
-              Projects
+              Apps
             </Link>
             <UserButton />
           </SignedIn>

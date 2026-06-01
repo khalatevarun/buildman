@@ -137,7 +137,7 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
       {/* Nav header */}
       <div className="flex items-center justify-between px-4 h-10 shrink-0 border-b border-border">
         <Link
-          to="/projects"
+          to="/apps"
           className="flex items-center text-foreground hover:text-white transition-colors duration-150 no-underline"
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
