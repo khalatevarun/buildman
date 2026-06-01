@@ -2,7 +2,6 @@ import { useRef, useEffect, useState, memo } from 'react'
 import { Link } from 'react-router-dom'
 import { useSelector, useDispatch } from 'react-redux'
 import ReactMarkdown from 'react-markdown'
-import { toast } from 'sonner'
 import { api } from '../utility/api'
 import { setPreviewingHash, setEnvNeeded, restoreHistory, enqueuePrompt, removeFromQueue, setPendingInput } from '../store'
 import type { RootState } from '../store'
@@ -72,7 +71,6 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
   const previewingHash = useSelector((s: RootState) => s.app.previewingHash)
   const envNeeded = useSelector((s: RootState) => s.app.envNeeded)
   const deployedHash = useSelector((s: RootState) => s.app.deployedHash)
-  const deployedUrl = useSelector((s: RootState) => s.app.deployedUrl)
   const promptQueue = useSelector((s: RootState) => s.app.promptQueue)
   const pendingInput = useSelector((s: RootState) => s.app.pendingInput)
   const [input, setInput] = useState('')
@@ -212,7 +210,6 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
                   versionNumber={cpIndex + 1}
                   totalVersions={checkpoints.length}
                   isDeployed={checkpoint.hash === deployedHash}
-                  deployedUrl={checkpoint.hash === deployedHash ? deployedUrl : null}
                   publishing={publishingHash === checkpoint.hash}
                   onPreview={handlePreview}
                   onRestore={handleRestore}

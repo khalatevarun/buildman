@@ -7,7 +7,6 @@ interface Props {
   versionNumber: number
   totalVersions: number
   isDeployed: boolean
-  deployedUrl: string | null
   publishing: boolean
   onPreview: (hash: string) => void
   onRestore: (hash: string) => void
@@ -22,26 +21,8 @@ function timeAgo(ts: number) {
 }
 
 
-function CopyIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-      <rect x="3.5" y="3.5" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.2"/>
-      <path d="M2.5 7.5H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h4.5a1 1 0 0 1 1 1v.5" stroke="currentColor" strokeWidth="1.2"/>
-    </svg>
-  )
-}
-
-function ExternalIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-      <path d="M4.5 2H2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V6.5M7 1h3m0 0v3m0-3L5 6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  )
-}
-
-export function CheckpointCard({ hash, timestamp, versionNumber, totalVersions, isDeployed, deployedUrl, publishing, onPreview, onRestore, onDeploy }: Props) {
+export function CheckpointCard({ hash, timestamp, versionNumber, totalVersions, isDeployed, publishing, onPreview, onRestore, onDeploy }: Props) {
   const [loading, setLoading] = useState<'preview' | 'restore' | null>(null)
-  const [copied, setCopied] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
   const handlePreview = async () => {
@@ -63,13 +44,6 @@ export function CheckpointCard({ hash, timestamp, versionNumber, totalVersions, 
 
   const handleDeploy = async () => {
     onDeploy(hash)
-  }
-
-  const handleCopy = () => {
-    if (!deployedUrl) return
-    navigator.clipboard.writeText(deployedUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1800)
   }
 
   const live = isDeployed

@@ -162,31 +162,6 @@ export function usePrompt(userId: string | null, projectId: string | null) {
         checkpoints: state.app.checkpoints,
       }).catch(() => {})
 
-      // Check Vite for errors after Claude finishes
-      api.get(`/vite-logs?user_id=${userId}`).then(({ data }) => {
-        if (data.isEnvError) {
-          // Only show generic env prompt if env popup isn't already queued from the agent scan
-          const currentEnv = store.getState().app.envNeeded
-          if (!currentEnv?.length) {
-            dispatch(setEnvNeeded([{
-              name: 'VITE_API_KEY',
-              service: null,
-              url: null,
-              hint: 'The preview is returning auth errors — check your API key',
-            }]))
-          }
-        } else if (data.isCodeError && data.logs) {
-          // Auto-fix: send the error lines back to Claude without user action
-          const errorLines = data.logs
-            .split('\n')
-            .filter((l: string) => /error/i.test(l))
-            .slice(0, 5)
-            .join('\n')
-          if (errorLines.trim()) {
-            sendPrompt(`The preview is showing an error. Fix it:\n\n${errorLines}`)
-          }
-        }
-      }).catch(() => {})
     }
   }
 
