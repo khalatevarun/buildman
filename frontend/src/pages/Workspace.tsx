@@ -1,39 +1,47 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useLocation } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
-import { useSelector, useDispatch } from 'react-redux'
 import { toast } from 'sonner'
 import { useSandbox } from '../hooks/useSandbox'
 import { usePrompt } from '../hooks/usePrompt'
-import { setPreviewingHash, resetWorkspace, restoreHistory, setDeployedHash, setDeployedUrl, setProjectName, dequeuePrompt, store } from '../store'
-import type { RootState } from '../store'
+import {
+  setPreviewingHash,
+  resetWorkspace,
+  restoreHistory,
+  setDeployedHash,
+  setDeployedUrl,
+  setProjectName,
+  dequeuePrompt,
+  useAppDispatch,
+  useAppSelector,
+} from '../store'
 import { ChatPanel } from '../components/ChatPanel'
 import { PreviewPane } from '../components/PreviewPane'
 import { RestoreConfirmDialog } from '../components/RestoreConfirmDialog'
 import { api } from '../utility/api'
-
-
-function timeAgo(ts: number) {
-  const s = Math.floor((Date.now() - ts) / 1000)
-  if (s < 60) return `${s}s ago`
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  return `${Math.floor(s / 3600)}h ago`
-}
+import { timeAgo } from '../utility/time'
 
 export function Workspace() {
   const { projectId } = useParams<{ projectId: string }>()
   const location = useLocation()
   const { user } = useUser()
   const userId = user?.id ?? null
-  const dispatch = useDispatch()
-  const previewingHash = useSelector((s: RootState) => s.app.previewingHash)
-  const streaming = useSelector((s: RootState) => s.app.streaming)
-  const deployedUrl = useSelector((s: RootState) => s.app.deployedUrl)
-  const checkpoints = useSelector((s: RootState) => s.app.checkpoints)
-  const projectName = useSelector((s: RootState) => s.app.projectName)
+  const dispatch = useAppDispatch()
+  const previewingHash = useAppSelector(s => s.app.previewingHash)
+  const streaming = useAppSelector(s => s.app.streaming)
+  const deployedUrl = useAppSelector(s => s.app.deployedUrl)
+  const checkpoints = useAppSelector(s => s.app.checkpoints)
+  const projectName = useAppSelector(s => s.app.projectName)
+  const promptQueue = useAppSelector(s => s.app.promptQueue)
+  const messages = useAppSelector(s => s.app.messages)
 
   const { previewUrl, ensureSandbox } = useSandbox(userId)
   const { sendPrompt, stopPrompt } = usePrompt(userId, projectId ?? null)
+
+  // sendPrompt is not memoized — it must close over fresh state on each call.
+  // Store it in a ref so the streaming effect always calls the latest version.
+  const sendPromptRef = useRef(sendPrompt)
+  useEffect(() => { sendPromptRef.current = sendPrompt }, [sendPrompt])
 
   useEffect(() => {
     document.title = projectName ? `${projectName} | Buildman` : 'Buildman — Build apps with AI'
@@ -96,8 +104,9 @@ export function Workspace() {
     dispatch(resetWorkspace())
     let active = true
     const init = async () => {
+      let deployed: { deployedHash: string | null; deployedUrl: string | null }
       try {
-        await ensureSandbox(projectId)
+        deployed = await ensureSandbox(projectId)
       } catch (err: any) {
         const msg = err?.message || 'Sandbox failed to start'
         toast.error(msg, {
@@ -107,6 +116,8 @@ export function Workspace() {
         return
       }
       if (!active) return
+      dispatch(setDeployedHash(deployed.deployedHash))
+      dispatch(setDeployedUrl(deployed.deployedUrl))
       // Fetch project name for existing projects (new projects get name from Claude's <name> tag)
       try {
         const { data } = await api.get<{ projects: { project_id: string; name: string }[] }>(`/projects?user_id=${userId}`)
@@ -124,7 +135,7 @@ export function Workspace() {
         // Clear from history state immediately so reload doesn't re-fire the prompt
         window.history.replaceState({ ...window.history.state, usr: { ...location.state, initialPrompt: undefined } }, '')
         try {
-          await sendPrompt(initialPrompt)
+          await sendPromptRef.current(initialPrompt)
         } catch {
           toast.error('Connection error — please try again')
         }
@@ -132,21 +143,29 @@ export function Workspace() {
     }
     init()
     return () => { active = false }
-  }, [projectId, userId])
+  }, [projectId, userId]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // When streaming finishes: process next queued prompt, then persist chat to server.
+  // Running after the streaming→false render means messages/checkpoints are fully up to date.
   useEffect(() => {
-    if (prevStreamingRef.current && !streaming) {
-      const queue = store.getState().app.promptQueue
-      if (queue.length > 0) {
-        const next = queue[0]
-        dispatch(dequeuePrompt())
-        sendPrompt(next)
-      }
+    if (!prevStreamingRef.current || streaming) {
+      prevStreamingRef.current = streaming
+      return
     }
     prevStreamingRef.current = streaming
-  }, [streaming])
 
-  const handleDeploy = async (hash: string): Promise<string> => {
+    const queue = promptQueue
+    if (queue.length > 0) {
+      dispatch(dequeuePrompt())
+      sendPromptRef.current(queue[0])
+    }
+
+    if (projectId && userId && messages.length > 0) {
+      api.post(`/projects/${projectId}/chat`, { user_id: userId, messages, checkpoints }).catch(() => {})
+    }
+  }, [streaming, dispatch, projectId, userId, messages, checkpoints, promptQueue])
+
+  const handleDeploy = useCallback(async (hash: string): Promise<string> => {
     if (!userId) throw new Error('Not authenticated')
     setPublishingHash(hash)
     try {
@@ -166,9 +185,9 @@ export function Workspace() {
     } finally {
       setPublishingHash(null)
     }
-  }
+  }, [userId, projectName, dispatch])
 
-  const handleExitPreview = async () => {
+  const handleExitPreview = useCallback(async () => {
     if (!userId) return
     try {
       await api.post('/preview-exit', null, { params: { user_id: userId } })
@@ -176,9 +195,9 @@ export function Workspace() {
     } catch {
       toast.error("Couldn't exit preview mode — try refreshing")
     }
-  }
+  }, [userId, dispatch])
 
-  const handleVersionChange = async (hash: string | null) => {
+  const handleVersionChange = useCallback(async (hash: string | null) => {
     if (!userId) return
     if (hash === null) {
       await handleExitPreview()
@@ -190,9 +209,9 @@ export function Workspace() {
         toast.error("Couldn't switch to that version — try again")
       }
     }
-  }
+  }, [userId, dispatch, handleExitPreview])
 
-  const handleRestoreFromBanner = async () => {
+  const handleRestoreFromBanner = useCallback(async () => {
     if (!userId || !previewingHash) return
     try {
       const { data } = await api.post<{ ok: boolean; messages: { role: 'user' | 'assistant'; text: string; activities: string[] }[]; checkpoints: { hash: string; timestamp: number }[] }>(
@@ -205,47 +224,44 @@ export function Workspace() {
     } catch {
       toast.error('Restore failed — try refreshing the page')
     }
-  }
+  }, [userId, previewingHash, dispatch])
+
+  // Derive preview banner values above JSX — no IIFE in render
+  const previewIdx = previewingHash ? checkpoints.findIndex(cp => cp.hash === previewingHash) : -1
+  const previewVersion = previewIdx + 1
+  const previewTimestamp = previewIdx >= 0 ? checkpoints[previewIdx].timestamp : 0
+  const timeAgoStr = previewTimestamp ? timeAgo(previewTimestamp) : ''
 
   return (
     <div className="h-screen overflow-hidden bg-background text-foreground flex flex-col">
-      {(() => {
-        const previewIdx = previewingHash ? checkpoints.findIndex(cp => cp.hash === previewingHash) : -1
-        const previewVersion = previewIdx + 1
-        const previewTimestamp = previewIdx >= 0 ? checkpoints[previewIdx].timestamp : 0
-        const timeAgoStr = previewTimestamp ? timeAgo(previewTimestamp) : ''
-        return (
-          <>
-            <RestoreConfirmDialog
-              open={bannerRestoreOpen}
-              versionNumber={previewVersion}
-              timeAgo={timeAgoStr}
-              showPreviewHint={false}
-              onConfirm={async () => { setBannerRestoreOpen(false); await handleRestoreFromBanner() }}
-              onCancel={() => setBannerRestoreOpen(false)}
-            />
-            {previewingHash && (
-              <div className="flex items-center justify-between px-4 py-2 bg-card border-b border-border text-xs">
-                <span className="text-muted-foreground">Viewing an earlier version</span>
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => setBannerRestoreOpen(true)}
-                    className="text-foreground hover:text-muted-foreground transition-colors"
-                  >
-                    Restore this version
-                  </button>
-                  <button
-                    onClick={handleExitPreview}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    Back to latest
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )
-      })()}
+      <RestoreConfirmDialog
+        open={bannerRestoreOpen}
+        versionNumber={previewVersion}
+        timeAgo={timeAgoStr}
+        showPreviewHint={false}
+        onConfirm={async () => { setBannerRestoreOpen(false); await handleRestoreFromBanner() }}
+        onCancel={() => setBannerRestoreOpen(false)}
+      />
+
+      {previewingHash && (
+        <div className="flex items-center justify-between px-4 py-2 bg-card border-b border-border text-xs">
+          <span className="text-muted-foreground">Viewing an earlier version</span>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setBannerRestoreOpen(true)}
+              className="text-foreground hover:text-muted-foreground transition-colors"
+            >
+              Restore this version
+            </button>
+            <button
+              onClick={handleExitPreview}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Back to latest
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel — Chat */}
@@ -266,7 +282,6 @@ export function Workspace() {
             className="w-px shrink-0 cursor-col-resize group relative z-10 hover:bg-primary/30 transition-colors duration-150"
             style={{ background: 'var(--border)' }}
           >
-            {/* Center grip dots */}
             <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 flex flex-col items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
               <span className="w-0.5 h-3 rounded-full bg-primary/50" />
               <span className="w-0.5 h-3 rounded-full bg-primary/50" />

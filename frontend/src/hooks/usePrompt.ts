@@ -1,4 +1,4 @@
-import { useDispatch } from 'react-redux'
+import { useCallback } from 'react'
 import { toast } from 'sonner'
 import {
   appendChatOutput,
@@ -14,8 +14,10 @@ import {
   cancelLastExchange,
   setPendingInput,
   setAssistantFinalText,
-  store,
+  useAppDispatch,
+  useAppSelector,
 } from '../store'
+import { api, API_URL } from '../utility/api'
 
 function extractLastSentence(text: string): string {
   const trimmed = text.trim()
@@ -27,13 +29,17 @@ function extractLastSentence(text: string): string {
   }
   return parts[parts.length - 1].trim()
 }
-import { api, API_URL } from '../utility/api'
 
 export function usePrompt(userId: string | null, projectId: string | null) {
-  const dispatch = useDispatch()
+  const dispatch = useAppDispatch()
+  // messages is read at call time (sendPrompt is not memoized), so this is always fresh
+  const messages = useAppSelector(s => s.app.messages)
 
+  // Not wrapped in useCallback — this function must close over fresh `messages` on every call.
+  // Callers that store it across renders (e.g. Workspace streaming effect) use a ref.
   const sendPrompt = async (text: string) => {
     if (!userId) return
+    const isFirstMessage = messages.filter(m => m.role === 'user').length === 0
     dispatch(addUserMessage(text))
     dispatch(setStreaming(true))
 
@@ -66,7 +72,6 @@ export function usePrompt(userId: string | null, projectId: string | null) {
     const decoder = new TextDecoder()
     const activities: string[] = []
     let gotDone = false
-    const isFirstMessage = store.getState().app.messages.filter(m => m.role === 'user').length === 1
     let nameParsed = !isFirstMessage
     let outputBuffer = ''
     let fullOutput = ''
@@ -152,25 +157,17 @@ export function usePrompt(userId: string | null, projectId: string | null) {
       dispatch(finalizeMessage([...activities]))
       dispatch(setStreaming(false))
     }
-
-    // Fire-and-forget: persist chat history to volume and check for Vite errors
-    if (projectId) {
-      const state = store.getState()
-      api.post(`/projects/${projectId}/chat`, {
-        user_id: userId,
-        messages: state.app.messages,
-        checkpoints: state.app.checkpoints,
-      }).catch(() => {})
-
-    }
   }
 
-  const stopPrompt = async () => {
+  // Chat persistence is handled by a useEffect in Workspace that watches streaming→false,
+  // where it reads fully-updated messages/checkpoints from the triggering render.
+
+  const stopPrompt = useCallback(async () => {
     if (!userId) return
     try {
       await api.post('/stop', { user_id: userId })
     } catch { /* best effort */ }
-  }
+  }, [userId])
 
   return { sendPrompt, stopPrompt }
 }

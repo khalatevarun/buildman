@@ -1,10 +1,17 @@
-import { useRef, useEffect, useState, memo } from 'react'
+import { useRef, useEffect, useState, useMemo, useCallback, memo } from 'react'
 import { Link } from 'react-router-dom'
-import { useSelector, useDispatch } from 'react-redux'
 import ReactMarkdown from 'react-markdown'
 import { api } from '../utility/api'
-import { setPreviewingHash, setEnvNeeded, restoreHistory, enqueuePrompt, removeFromQueue, setPendingInput } from '../store'
-import type { RootState } from '../store'
+import {
+  setPreviewingHash,
+  setEnvNeeded,
+  restoreHistory,
+  enqueuePrompt,
+  removeFromQueue,
+  setPendingInput,
+  useAppDispatch,
+  useAppSelector,
+} from '../store'
 import { ActivityTicker } from './ActivityTicker'
 import { CheckpointCard } from './CheckpointCard'
 import { EnvVarCard } from './EnvVarCard'
@@ -63,16 +70,16 @@ function ThinkingDots({ word }: { word: string }) {
 }
 
 export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, projectName }: Props) {
-  const dispatch = useDispatch()
-  const messages = useSelector((s: RootState) => s.app.messages)
-  const streaming = useSelector((s: RootState) => s.app.streaming)
-  const liveActivity = useSelector((s: RootState) => s.app.liveActivity)
-  const checkpoints = useSelector((s: RootState) => s.app.checkpoints)
-  const previewingHash = useSelector((s: RootState) => s.app.previewingHash)
-  const envNeeded = useSelector((s: RootState) => s.app.envNeeded)
-  const deployedHash = useSelector((s: RootState) => s.app.deployedHash)
-  const promptQueue = useSelector((s: RootState) => s.app.promptQueue)
-  const pendingInput = useSelector((s: RootState) => s.app.pendingInput)
+  const dispatch = useAppDispatch()
+  const messages = useAppSelector(s => s.app.messages)
+  const streaming = useAppSelector(s => s.app.streaming)
+  const liveActivity = useAppSelector(s => s.app.liveActivity)
+  const checkpoints = useAppSelector(s => s.app.checkpoints)
+  const previewingHash = useAppSelector(s => s.app.previewingHash)
+  const envNeeded = useAppSelector(s => s.app.envNeeded)
+  const deployedHash = useAppSelector(s => s.app.deployedHash)
+  const promptQueue = useAppSelector(s => s.app.promptQueue)
+  const pendingInput = useAppSelector(s => s.app.pendingInput)
   const [input, setInput] = useState('')
   const [thinkingWord, setThinkingWord] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -88,17 +95,17 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
     if (streaming) setThinkingWord(THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)])
   }, [streaming])
 
-  const handleEnvSubmit = async (values: Record<string, string>) => {
+  const handleEnvSubmit = useCallback(async (values: Record<string, string>) => {
     if (!userId) return
     await api.post('/set-env', { user_id: userId, vars: values })
     dispatch(setEnvNeeded(null))
-  }
+  }, [userId, dispatch])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, liveActivity])
 
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     const text = input.trim()
     if (!text || previewingHash || publishingHash) return
     setInput('')
@@ -107,28 +114,30 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
       return
     }
     onSend(text)
-  }
+  }, [input, previewingHash, publishingHash, streaming, dispatch, onSend])
 
-  const handlePreview = async (hash: string) => {
+  const handlePreview = useCallback(async (hash: string) => {
     if (!userId) return
     if (checkpoints[checkpoints.length - 1]?.hash === hash) return
     await api.post('/preview', { user_id: userId, hash })
     dispatch(setPreviewingHash(hash))
-  }
+  }, [userId, checkpoints, dispatch])
 
-  const handleRestore = async (hash: string) => {
+  const handleRestore = useCallback(async (hash: string) => {
     if (!userId) return
-    // The server truncates chat.json atomically as part of the git reset,
-    // then returns the authoritative truncated state — no client-side math needed.
     const { data } = await api.post<{ ok: boolean; messages: typeof messages; checkpoints: typeof checkpoints }>(
       '/restore', { user_id: userId, hash }
     )
     if (data?.messages && data?.checkpoints) {
       dispatch(restoreHistory({ messages: data.messages, checkpoints: data.checkpoints }))
     }
-  }
+  }, [userId, dispatch]) // messages/checkpoints only used for the response type annotation
 
-  let exchangeCount = 0
+  // Pre-compute checkpoint index for each message — avoids a mutable counter in render
+  const checkpointIndices = useMemo(() => {
+    let count = 0
+    return messages.map(m => (m.isFinal ? count++ : -1))
+  }, [messages])
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -160,8 +169,7 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
             )
           }
 
-          const cpIndex = m.isFinal ? exchangeCount : -1
-          if (m.isFinal) exchangeCount++
+          const cpIndex = checkpointIndices[i]
           const checkpoint = cpIndex >= 0 ? checkpoints[cpIndex] : undefined
           const isLastMessage = i === messages.length - 1
           const isActiveMessage = isLastMessage && streaming
@@ -260,7 +268,7 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
         {promptQueue.length > 0 && !previewingHash && (
           <div className="mb-1.5 flex flex-col gap-1">
             {promptQueue.map((item, i) => (
-              <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/60 border border-border/40">
+              <div key={`${i}:${item}`} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/60 border border-border/40">
                 <span className="text-[10px] text-muted-foreground/30 shrink-0">↳</span>
                 <span className="flex-1 text-[12px] text-muted-foreground/60 truncate">{item}</span>
                 <button

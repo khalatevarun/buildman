@@ -1,9 +1,28 @@
 import { useState } from 'react'
-import { useDispatch } from 'react-redux'
-import { setDeployedHash, setDeployedUrl } from '../store'
 import { api, API_URL } from '../utility/api'
 
 export type SandboxStatus = 'idle' | 'creating' | 'ready'
+
+interface SandboxStatusResponse {
+  status: string
+  preview_url?: string
+  project_id?: string
+  deployed_hash?: string | null
+  deployed_url?: string | null
+}
+
+interface SandboxDoneEvent {
+  type: 'done'
+  preview_url: string
+  project_id: string
+  deployed_hash?: string | null
+  deployed_url?: string | null
+}
+
+interface EnsureResult {
+  deployedHash: string | null
+  deployedUrl: string | null
+}
 
 async function* readSSE(response: Response) {
   const reader = response.body!.getReader()
@@ -23,7 +42,6 @@ async function* readSSE(response: Response) {
 }
 
 export function useSandbox(userId: string | null) {
-  const dispatch = useDispatch()
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [status, setStatus] = useState<SandboxStatus>('idle')
   const [phase, setPhase] = useState<string | null>(null)
@@ -41,8 +59,6 @@ export function useSandbox(userId: string | null) {
       if (event.type === 'phase') setPhase(event.text)
       if (event.type === 'done') {
         setPreviewUrl(event.preview_url)
-        dispatch(setDeployedHash(null))
-        dispatch(setDeployedUrl(null))
         setPhase(null)
         setStatus('ready')
         return event.project_id as string
@@ -57,20 +73,14 @@ export function useSandbox(userId: string | null) {
   }
 
   // Ensures the sandbox is ready for a given project. Used by Workspace on mount.
-  const ensureSandbox = async (projectId: string): Promise<void> => {
+  // Returns deployed state so the caller can sync it to Redux.
+  const ensureSandbox = async (projectId: string): Promise<EnsureResult> => {
     try {
-      const { data } = await api.get<{
-        status: string
-        preview_url?: string
-        project_id?: string
-        deployed_hash?: string | null
-      }>(`/sandbox/status?user_id=${userId}`)
+      const { data } = await api.get<SandboxStatusResponse>(`/sandbox/status?user_id=${userId}`)
       if (data.status === 'ready' && data.preview_url && data.project_id === projectId) {
         setPreviewUrl(data.preview_url)
-        dispatch(setDeployedHash(data.deployed_hash ?? null))
-        dispatch(setDeployedUrl((data as any).deployed_url ?? null))
         setStatus('ready')
-        return
+        return { deployedHash: data.deployed_hash ?? null, deployedUrl: data.deployed_url ?? null }
       }
     } catch { /* network error — fall through to open */ }
 
@@ -80,22 +90,22 @@ export function useSandbox(userId: string | null) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId }),
     })
-    for await (const event of readSSE(response)) {
-      if (event.type === 'phase') setPhase(event.text)
+    for await (const event of readSSE(response) as AsyncGenerator<SandboxDoneEvent | { type: string; text?: string }>) {
+      if (event.type === 'phase') setPhase((event as { type: string; text: string }).text)
       if (event.type === 'done') {
-        setPreviewUrl(event.preview_url)
-        dispatch(setDeployedHash(event.deployed_hash ?? null))
-        dispatch(setDeployedUrl(event.deployed_url ?? null))
+        const done = event as SandboxDoneEvent
+        setPreviewUrl(done.preview_url)
         setPhase(null)
         setStatus('ready')
-        return
+        return { deployedHash: done.deployed_hash ?? null, deployedUrl: done.deployed_url ?? null }
       }
       if (event.type === 'error') {
         setPhase(null)
         setStatus('idle')
-        throw new Error(event.text)
+        throw new Error((event as { type: string; text: string }).text)
       }
     }
+    return { deployedHash: null, deployedUrl: null }
   }
 
   const destroySandbox = () => {
