@@ -3,18 +3,24 @@ const { spawn, exec, execSync } = require('child_process')
 const { promisify } = require('util')
 const fs = require('fs')
 const path = require('path')
+const http = require('http')
 const execAsync = promisify(exec)
 
 const app = express()
 app.use(express.json())
 
-const WORKSPACE = '/workspace'      // local disk — fast for Claude file I/O
-const DATA_DIR = '/data'             // volume mount — persists across sandbox restarts
-const BUNDLE_PATH = '/data/workspace.bundle'  // git bundle saved here after each prompt
-const CHAT_PATH = '/data/chat.json'           // chat history persisted on volume
+const WORKSPACE = '/workspace'
+const DATA_DIR = '/data'
+const BUNDLE_PATH = '/data/workspace.bundle'
+const CHAT_PATH = '/data/chat.json'
 const STARTER_DIR = '/opt/starter'
-const CLAUDE_CONFIG_DIR = '/workspace/.claude-data'
-const SESSION_ID_FILE = '/workspace/.claude-session-id'
+const OC_SESSION_FILE = '/workspace/.opencode-session-id'
+const OC_PORT = 4096
+const OC_BASE = `http://127.0.0.1:${OC_PORT}`
+// OpenCode Zen — the default OpenCode provider (requires OPENCODE_API_KEY in Modal secrets).
+// To use local Ollama instead (zero credentials): set OC_PROVIDER='ollama' and OC_MODEL to your model.
+const OC_PROVIDER = 'opencode'
+const OC_MODEL = 'deepseek-v4-flash-free'
 
 // Rolling buffer of Vite stdout/stderr — last 150 lines, in-memory only
 const VITE_LOG = []
@@ -34,14 +40,14 @@ function spawnVite() {
   proc.unref()
 }
 
-let claudeSessionId = fs.existsSync(SESSION_ID_FILE)
-  ? fs.readFileSync(SESSION_ID_FILE, 'utf8').trim()
+let opencodeSessionId = fs.existsSync(OC_SESSION_FILE)
+  ? fs.readFileSync(OC_SESSION_FILE, 'utf8').trim()
   : null
-
-let claudeUid = null
-let claudeGid = null
-let activeClaudeProc = null
+let buildmanUid = null
+let buildmanGid = null
+let activePromptRes = null  // current streaming /prompt SSE response
 let wasStopped = false
+let sseEventListeners = []  // callbacks receiving OpenCode /event stream
 
 function initNonRootUser() {
   try {
@@ -49,8 +55,8 @@ function initNonRootUser() {
   } catch {
     execSync('useradd -m -u 1000 -s /bin/bash buildman', { stdio: 'pipe' })
   }
-  claudeUid = parseInt(execSync('id -u buildman', { encoding: 'utf8' }).trim())
-  claudeGid = parseInt(execSync('id -g buildman', { encoding: 'utf8' }).trim())
+  buildmanUid = parseInt(execSync('id -u buildman', { encoding: 'utf8' }).trim())
+  buildmanGid = parseInt(execSync('id -g buildman', { encoding: 'utf8' }).trim())
   fs.mkdirSync(WORKSPACE, { recursive: true })
   execSync(`chown -R buildman:buildman ${WORKSPACE}`, { stdio: 'pipe' })
   execSync('su buildman -c "git config --global user.email agent@buildman.dev"', { stdio: 'pipe' })
@@ -58,54 +64,32 @@ function initNonRootUser() {
   execSync('su buildman -c "git config --global safe.directory \'*\'"', { stdio: 'pipe' })
 }
 
-function getAuthMode() {
-  if (process.env.ANTHROPIC_API_KEY?.trim()) return 'api_key'
-  if (process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim()) return 'oauth_token'
-  if (fs.existsSync(`${CLAUDE_CONFIG_DIR}/.credentials.json`)) return 'credentials_file'
-  return null
-}
-
-function initCredentials() {
-  if (process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_OAUTH_TOKEN) return
-  const creds = process.env.CLAUDE_CREDENTIALS
-  if (!creds) return
-  fs.mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true })
-  const credPath = `${CLAUDE_CONFIG_DIR}/.credentials.json`
-  if (!fs.existsSync(credPath)) {
-    fs.writeFileSync(credPath, creds, { mode: 0o600 })
-  }
-  if (claudeUid !== null) {
-    execSync(`chown -R buildman:buildman ${CLAUDE_CONFIG_DIR}`, { stdio: 'pipe' })
-  }
-}
-
-async function ensureGitRepo() {
-  fs.mkdirSync(WORKSPACE, { recursive: true })
-  try {
-    await execAsync('git rev-parse --git-dir', { cwd: WORKSPACE })
-  } catch {
-    const gitDir = path.join(WORKSPACE, '.git')
-    if (fs.existsSync(gitDir)) {
-      fs.rmSync(gitDir, { recursive: true, force: true })
-    }
-    await execAsync('git init -b main', { cwd: WORKSPACE })
-  }
-}
-
 function writeSse(res, payload) {
   res.write(`data: ${JSON.stringify(payload)}\n\n`)
 }
 
-function formatToolLabel(name, input) {
-  if (!input || typeof input !== 'object') return name
-  if (name === 'Bash' && input.command) {
-    const cmd = String(input.command).trim()
-    return `Bash: ${cmd.length > 80 ? cmd.slice(0, 77) + '…' : cmd}`
+// Map OpenCode tool names (from packages/opencode/src/tool/) to human-readable labels
+function formatToolLabel(toolName, input) {
+  const n = String(toolName || '').toLowerCase()
+  if (n === 'bash') {
+    const cmd = input?.command ? String(input.command).trim() : ''
+    return cmd ? `Bash: ${cmd.length > 60 ? cmd.slice(0, 57) + '…' : cmd}` : 'Running command'
   }
-  if (name === 'Write' && input.file_path) return `Write: ${input.file_path}`
-  if (name === 'Edit' && input.file_path) return `Edit: ${input.file_path}`
-  if (name === 'Read' && input.file_path) return `Read: ${input.file_path}`
-  return name
+  if (n === 'edit') return input?.filePath ? `Edit: ${input.filePath}` : 'Editing file'
+  if (n === 'write') return input?.filePath ? `Write: ${input.filePath}` : 'Writing file'
+  if (n === 'read') return input?.filePath ? `Read: ${input.filePath}` : 'Reading file'
+  if (n === 'apply_patch') return 'Applying patch'
+  if (n === 'glob') return 'Searching files'
+  if (n === 'grep') return 'Searching code'
+  if (n === 'webfetch') return 'Fetching URL'
+  if (n === 'websearch') return 'Searching web'
+  if (n === 'todo' || n === 'todowrite') return null
+  if (n === 'task') return 'Running task'
+  if (n === 'lsp') return 'Code analysis'
+  if (n === 'repo_overview') return 'Reading codebase'
+  if (n === 'repo_clone') return 'Cloning repo'
+  // Prettify unknown tool names: snake_case → Title Case
+  return n.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 
 function deriveService(varName) {
@@ -151,51 +135,16 @@ function scanEnvPlaceholders() {
   return groups
 }
 
-function attachClaudeStdout(res, proc) {
-  let buffer = ''
-  proc.stdout.on('data', (chunk) => {
-    buffer += chunk.toString()
-    const lines = buffer.split('\n')
-    buffer = lines.pop()
-    for (const line of lines) {
-      if (!line.trim()) continue
-      try {
-        const event = JSON.parse(line)
-        if (event.session_id && !claudeSessionId) {
-          claudeSessionId = event.session_id
-          fs.writeFileSync(SESSION_ID_FILE, claudeSessionId)
-        }
-        if (event.type === 'assistant' && event.message?.content) {
-          const hasText = event.message.content.some(b => b.type === 'text' && b.text)
-          if (hasText) writeSse(res, { type: 'new_turn' })
-          for (const block of event.message.content) {
-            if (block.type === 'text' && block.text) {
-              writeSse(res, { type: 'output', text: block.text })
-            }
-            if (block.type === 'tool_use' && block.name) {
-              writeSse(res, { type: 'activity', text: formatToolLabel(block.name, block.input) })
-            }
-          }
-        }
-        if (event.type === 'result' && event.subtype === 'success') {
-          const cost = event.total_cost_usd
-          if (typeof cost === 'number') {
-            writeSse(res, { type: 'activity', text: `Done ($${cost.toFixed(4)})` })
-          }
-        }
-      } catch { /* incomplete JSON line */ }
-    }
-  })
-}
-
-app.get('/healthz', (_, res) => {
-  const mode = getAuthMode()
-  res.json({ ok: true, auth_mode: mode, authenticated: mode !== null })
+app.get('/healthz', async (_, res) => {
+  let ocHealthy = false
+  try {
+    const r = await fetch(`${OC_BASE}/global/health`)
+    ocHealthy = r.ok
+  } catch {}
+  res.json({ ok: true, opencode_healthy: ocHealthy, session_id: opencodeSessionId })
 })
 
 function ensureNodeModules() {
-  // node_modules live on local disk as a symlink to the image's pre-installed copy.
-  // Never stored in the volume or the git bundle.
   const nm = path.join(WORKSPACE, 'node_modules')
   try {
     const stat = fs.lstatSync(nm)
@@ -217,27 +166,148 @@ async function saveBundle() {
   }
 }
 
-function primeClaudeSession() {
-  const authMode = getAuthMode()
-  if (!authMode) return
+async function ensureGitRepo() {
+  fs.mkdirSync(WORKSPACE, { recursive: true })
+  try {
+    await execAsync('git rev-parse --git-dir', { cwd: WORKSPACE })
+  } catch {
+    const gitDir = path.join(WORKSPACE, '.git')
+    if (fs.existsSync(gitDir)) {
+      fs.rmSync(gitDir, { recursive: true, force: true })
+    }
+    await execAsync('git init -b main', { cwd: WORKSPACE })
+  }
+}
 
-  const spawnOpts = {
-    cwd: WORKSPACE,
-    env: {
-      ...process.env,
-      CI: '1',
-      CLAUDE_CONFIG_DIR,
-      HOME: '/home/buildman',
-      ...(process.env.ANTHROPIC_API_KEY ? { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY } : {}),
-      ...(process.env.CLAUDE_CODE_OAUTH_TOKEN ? { CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN } : {}),
-    },
-    ...(claudeUid !== null ? { uid: claudeUid, gid: claudeGid } : {}),
+// ---------------------------------------------------------------------------
+// OpenCode server management
+// ---------------------------------------------------------------------------
+
+function writeOpencodeConfig() {
+  const configDir = '/home/buildman/.config/opencode'
+  fs.mkdirSync(configDir, { recursive: true })
+
+  const config = {
+    $schema: 'https://opencode.ai/config.json',
+    model: `${OC_PROVIDER}/${OC_MODEL}`,
+    permission: { '*': 'allow' },
+  }
+  fs.writeFileSync(path.join(configDir, 'opencode.json'), JSON.stringify(config, null, 2))
+
+  // Global AGENTS.md — loaded by OpenCode alongside the workspace AGENTS.md.
+  // Controls reply format for all sessions.
+  const globalAgentsMd = `# Reply Format Rules
+
+After completing any task, write your reply following these rules exactly.
+
+**Every reply:**
+- 1-3 sentences maximum
+- Start directly with what the user sees or can do — use "you" or "the app", never "I"
+- NEVER begin with: "All done", "Done", "No errors", "No type errors", "No TypeScript errors", "I've", "I have", "Let me", "Now I", "I will"
+- NEVER mention TypeScript, type errors, or results of any checks you ran internally
+- NEVER mention file names, component names, CSS classes, JSX, or any technical term
+- Write as if describing the finished result to a friend who has never written code
+`
+  fs.writeFileSync(path.join(configDir, 'AGENTS.md'), globalAgentsMd)
+}
+
+function startOpencodeServer() {
+  writeOpencodeConfig()
+
+  const env = {
+    ...process.env,
+    HOME: '/home/buildman',
+    XDG_CONFIG_HOME: '/home/buildman/.config',
+    XDG_DATA_HOME: '/home/buildman/.local/share',
+    // Ollama fallback: if set, opencode will use the local Ollama server instead
+    ...(process.env.OLLAMA_BASE_URL ? { OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL } : {}),
   }
 
-  // primeClaudeSession disabled — spawning a throwaway claude process does not
-  // meaningfully reduce first-prompt latency; the real fix is --bare on every spawn.
-  return
+  const proc = spawn('opencode', ['serve', '--port', String(OC_PORT)], {
+    cwd: WORKSPACE,
+    env,
+    uid: buildmanUid,
+    gid: buildmanGid,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+
+  proc.stdout.on('data', d => console.log('[opencode]', d.toString().trimEnd()))
+  proc.stderr.on('data', d => console.error('[opencode]', d.toString().trimEnd()))
+  proc.on('exit', code => console.log('[opencode] server exited', code))
+  proc.unref()
+  return proc
 }
+
+async function waitForOpencode(maxRetries = 30) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const r = await fetch(`${OC_BASE}/global/health`)
+      if (r.ok) { console.log('[opencode] server ready'); return }
+    } catch {}
+    await new Promise(r => setTimeout(r, 1000))
+  }
+  throw new Error('OpenCode server failed to start within 30s')
+}
+
+// Connect to GET /event and fan out to registered listeners.
+// Reconnects automatically on disconnect.
+function connectOpencodeEvents() {
+  const tryConnect = () => {
+    const req = http.request(
+      { hostname: '127.0.0.1', port: OC_PORT, path: '/event', method: 'GET',
+        headers: { Accept: 'text/event-stream', Connection: 'keep-alive' } },
+      (res) => {
+        let buf = ''
+        res.on('data', chunk => {
+          buf += chunk.toString()
+          const blocks = buf.split('\n\n')
+          buf = blocks.pop()  // keep incomplete trailing block
+          for (const block of blocks) {
+            if (!block.trim()) continue
+            const dataLine = block.split('\n').find(l => l.startsWith('data: '))
+            if (!dataLine) continue
+            try {
+              const event = JSON.parse(dataLine.slice(6))
+              for (const cb of sseEventListeners) cb(event)
+            } catch {}
+          }
+        })
+        res.on('end', () => { console.log('[opencode] SSE stream ended, reconnecting'); setTimeout(tryConnect, 2000) })
+        res.on('error', () => setTimeout(tryConnect, 2000))
+      }
+    )
+    req.on('error', () => setTimeout(tryConnect, 2000))
+    req.end()
+  }
+  tryConnect()
+}
+
+async function ensureOpencodeSession() {
+  if (opencodeSessionId) {
+    try {
+      const r = await fetch(`${OC_BASE}/session/${opencodeSessionId}`)
+      if (r.ok) return opencodeSessionId
+    } catch {}
+    console.log('[opencode] session gone, creating new one')
+    opencodeSessionId = null
+  }
+
+  const r = await fetch(`${OC_BASE}/session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  })
+  if (!r.ok) throw new Error(`create session failed: ${r.status}`)
+  const session = await r.json()
+  opencodeSessionId = session.id
+  fs.writeFileSync(OC_SESSION_FILE, opencodeSessionId)
+  console.log('[opencode] created session', opencodeSessionId)
+  return opencodeSessionId
+}
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
 
 app.post('/init-workspace', async (req, res) => {
   try {
@@ -246,45 +316,32 @@ app.post('/init-workspace', async (req, res) => {
     const hasGitRepo = fs.existsSync(path.join(WORKSPACE, '.git'))
 
     if (hasGitRepo) {
-      // Workspace already populated — restored from a filesystem snapshot.
-      // Files are already in place; just wipe stale Claude session state and
-      // re-seed credentials so the new sandbox can authenticate.
-      if (fs.existsSync(CLAUDE_CONFIG_DIR)) {
-        fs.rmSync(CLAUDE_CONFIG_DIR, { recursive: true, force: true })
-      }
-      if (claudeUid !== null) {
+      if (buildmanUid !== null) {
         execSync(`chown -R buildman:buildman ${WORKSPACE}`, { stdio: 'pipe' })
       }
-      claudeSessionId = null
-      if (fs.existsSync(SESSION_ID_FILE)) fs.unlinkSync(SESSION_ID_FILE)
-      initCredentials()
+      opencodeSessionId = null
+      if (fs.existsSync(OC_SESSION_FILE)) fs.unlinkSync(OC_SESSION_FILE)
     } else if (fs.existsSync(BUNDLE_PATH)) {
-      // Legacy path: restore from git bundle on a mounted volume.
       const entries = fs.readdirSync(WORKSPACE).filter(e => e !== 'lost+found')
       if (entries.length === 0) {
         await execAsync(`git clone ${BUNDLE_PATH} ${WORKSPACE}`)
-        if (fs.existsSync(CLAUDE_CONFIG_DIR)) {
-          fs.rmSync(CLAUDE_CONFIG_DIR, { recursive: true, force: true })
-        }
-        if (claudeUid !== null) {
+        if (buildmanUid !== null) {
           execSync(`chown -R buildman:buildman ${WORKSPACE}`, { stdio: 'pipe' })
         }
-        claudeSessionId = null
-        if (fs.existsSync(SESSION_ID_FILE)) fs.unlinkSync(SESSION_ID_FILE)
-        initCredentials()
+        opencodeSessionId = null
+        if (fs.existsSync(OC_SESSION_FILE)) fs.unlinkSync(OC_SESSION_FILE)
       }
     } else {
-      // Brand new project — seed from starter onto LOCAL disk
       if (!fs.existsSync(STARTER_DIR)) {
         return res.status(500).json({ error: 'Starter template not found at /opt/starter' })
       }
       execSync(`cp -a ${STARTER_DIR}/. ${WORKSPACE}/`, { stdio: 'pipe' })
       execSync(`rm -rf ${path.join(WORKSPACE, 'node_modules')}`, { stdio: 'pipe' })
-      if (claudeUid !== null) {
+      if (buildmanUid !== null) {
         execSync(`chown -R buildman:buildman ${WORKSPACE}`, { stdio: 'pipe' })
       }
-      claudeSessionId = null
-      if (fs.existsSync(SESSION_ID_FILE)) fs.unlinkSync(SESSION_ID_FILE)
+      opencodeSessionId = null
+      if (fs.existsSync(OC_SESSION_FILE)) fs.unlinkSync(OC_SESSION_FILE)
       await ensureGitRepo()
       await execAsync('git add -A', { cwd: WORKSPACE })
       await execAsync('git commit -m "Initial template"', { cwd: WORKSPACE })
@@ -292,10 +349,18 @@ app.post('/init-workspace', async (req, res) => {
     }
 
     ensureNodeModules()
-
     spawnVite()
 
-    // primeClaudeSession() — disabled, see function body for rationale
+    // Start OpenCode server and connect event stream
+    startOpencodeServer()
+    try {
+      await waitForOpencode()
+      connectOpencodeEvents()
+      await ensureOpencodeSession()
+    } catch (e) {
+      // Non-fatal: first /prompt will retry
+      console.error('[opencode] startup error:', e.message)
+    }
 
     res.json({ ok: true })
   } catch (e) {
@@ -335,57 +400,97 @@ app.get('/load-chat', (req, res) => {
 
 app.post('/prompt', async (req, res) => {
   const { text } = req.body
-  const authMode = getAuthMode()
-
-  if (!authMode) {
-    res.status(503).json({
-      error: 'No Claude auth configured. Run: modal secret create claude-credentials CLAUDE_CODE_OAUTH_TOKEN=<token>',
-    })
-    return
-  }
 
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
+  activePromptRes = res
+  wasStopped = false
 
-  const spawnOpts = {
-    cwd: WORKSPACE,
-    env: {
-      ...process.env,
-      CI: '1',
-      CLAUDE_CONFIG_DIR,
-      HOME: '/home/buildman',
-      ...(process.env.ANTHROPIC_API_KEY ? { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY } : {}),
-      ...(process.env.CLAUDE_CODE_OAUTH_TOKEN ? { CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN } : {}),
-    },
-    ...(claudeUid !== null ? { uid: claudeUid, gid: claudeGid } : {}),
+  let sessionId
+  try {
+    sessionId = await ensureOpencodeSession()
+  } catch (e) {
+    writeSse(res, { type: 'error', text: `OpenCode session error: ${e.message}` })
+    writeSse(res, { type: 'done', code: 1, sessionId: null, commitHash: null })
+    res.end()
+    activePromptRes = null
+    return
   }
 
-  const runArgs = [
-    '--print',
-    '--dangerously-skip-permissions',
-    '--output-format', 'stream-json',
-    '--verbose',
-    '--append-system-prompt-file', `${WORKSPACE}/CLAUDE.md`,
-    ...(claudeSessionId ? ['--resume', claudeSessionId] : []),
-    text,
-  ]
+  const body = {
+    parts: [{ type: 'text', text }],
+  }
 
-  const proc = spawn('claude', runArgs, spawnOpts)
-  activeClaudeProc = proc
-  wasStopped = false
-  proc.stdin.end()  // prevent "no stdin data received" warning
-  attachClaudeStdout(res, proc)
+  // Register event listener before posting so we don't miss early events
+  let firstTextSeen = false
 
-  proc.stderr.on('data', (chunk) => {
-    const text = chunk.toString()
-    if (text.includes('no stdin data received')) return  // suppress startup noise
-    writeSse(res, { type: 'error', text })
-  })
+  const listener = async (event) => {
+    if (!event || !event.type) return
 
-  proc.on('close', async (code) => {
-    activeClaudeProc = null
+    // Text streaming — real-time deltas from the model
+    if (event.type === 'message.part.delta') {
+      const props = event.properties || {}
+      if (props.sessionID !== sessionId) return
+      if (props.field === 'text' && props.delta) {
+        if (!firstTextSeen) {
+          firstTextSeen = true
+          writeSse(res, { type: 'new_turn' })
+        }
+        writeSse(res, { type: 'output', text: props.delta })
+      }
+    }
 
+    // Tool use activity — emit when tool starts running
+    if (event.type === 'message.part.updated') {
+      const props = event.properties || {}
+      const part = props.part || {}
+      if (part.sessionID !== sessionId) return
+      if (part.type === 'tool' && part.state && part.state.status === 'running') {
+        const label = formatToolLabel(part.tool, part.state.input)
+        if (label) writeSse(res, { type: 'activity', text: label })
+      }
+    }
+
+    // Session finished generating
+    if (event.type === 'session.idle' && (event.properties || {}).sessionID === sessionId) {
+      sseEventListeners = sseEventListeners.filter(l => l !== listener)
+
+      await onPromptComplete()
+    }
+
+    if (event.type === 'session.error' && (event.properties || {}).sessionID === sessionId) {
+      sseEventListeners = sseEventListeners.filter(l => l !== listener)
+      const errMsg = (event.properties || {}).error || 'Session error'
+      writeSse(res, { type: 'error', text: errMsg })
+      writeSse(res, { type: 'done', code: 1, sessionId, commitHash: null })
+      res.end()
+      activePromptRes = null
+    }
+  }
+
+  sseEventListeners.push(listener)
+
+  // Fire the prompt (async — response comes via SSE stream)
+  try {
+    const r = await fetch(`${OC_BASE}/session/${sessionId}/prompt_async`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!r.ok) {
+      const errBody = await r.text()
+      throw new Error(`prompt_async ${r.status}: ${errBody}`)
+    }
+  } catch (e) {
+    sseEventListeners = sseEventListeners.filter(l => l !== listener)
+    writeSse(res, { type: 'error', text: e.message })
+    writeSse(res, { type: 'done', code: 1, sessionId, commitHash: null })
+    res.end()
+    activePromptRes = null
+  }
+
+  async function onPromptComplete() {
     if (wasStopped) {
       wasStopped = false
       try {
@@ -393,10 +498,12 @@ app.post('/prompt', async (req, res) => {
       } catch (e) {
         console.error('reset on stop failed:', e.message)
       }
-      claudeSessionId = null
-      if (fs.existsSync(SESSION_ID_FILE)) fs.unlinkSync(SESSION_ID_FILE)
+      // Discard session so next prompt starts fresh after a stop
+      opencodeSessionId = null
+      if (fs.existsSync(OC_SESSION_FILE)) fs.unlinkSync(OC_SESSION_FILE)
       writeSse(res, { type: 'stopped' })
       res.end()
+      activePromptRes = null
       return
     }
 
@@ -406,9 +513,8 @@ app.post('/prompt', async (req, res) => {
       await execAsync('git add -A', { cwd: WORKSPACE })
       await execAsync(`git commit -m "checkpoint-${Date.now()}" --allow-empty`, { cwd: WORKSPACE })
       commitHash = (await execAsync('git rev-parse HEAD', { cwd: WORKSPACE })).stdout.trim()
-    } catch { /* nothing to commit */ }
+    } catch {}
 
-    // Persist workspace to volume as a git bundle — fast single-file save
     await saveBundle()
 
     const envNeeded = scanEnvPlaceholders()
@@ -416,9 +522,27 @@ app.post('/prompt', async (req, res) => {
       writeSse(res, { type: 'env_needed', vars: envNeeded })
     }
 
-    writeSse(res, { type: 'done', code, sessionId: claudeSessionId, commitHash })
+    writeSse(res, { type: 'done', code: 0, sessionId, commitHash })
     res.end()
-  })
+    activePromptRes = null
+  }
+})
+
+app.post('/stop', async (req, res) => {
+  wasStopped = true
+  if (activePromptRes) {
+    // Force-end the stream immediately; onPromptComplete will fire when session.idle arrives
+    // but we clear the response handle so it no longer writes to the client
+    sseEventListeners = []
+    try { await execAsync('git reset --hard HEAD', { cwd: WORKSPACE }) } catch {}
+    opencodeSessionId = null
+    if (fs.existsSync(OC_SESSION_FILE)) fs.unlinkSync(OC_SESSION_FILE)
+    writeSse(activePromptRes, { type: 'stopped' })
+    activePromptRes.end()
+    activePromptRes = null
+  }
+  wasStopped = false
+  res.json({ ok: true })
 })
 
 app.post('/preview', async (req, res) => {
@@ -449,8 +573,6 @@ app.post('/restore', async (req, res) => {
     await execAsync('git checkout main', { cwd: WORKSPACE }).catch(() => {})
     await execAsync(`git reset --hard ${hash}`, { cwd: WORKSPACE })
 
-    // Truncate chat.json to only the history that existed at this checkpoint.
-    // checkpoint[i] pairs with messages[2i] (user) + messages[2i+1] (assistant).
     let messages = []
     let checkpoints = []
     if (fs.existsSync(CHAT_PATH)) {
@@ -465,9 +587,9 @@ app.post('/restore', async (req, res) => {
       }
     }
 
-    // Reset Claude session so next prompt starts fresh from restored state
-    claudeSessionId = null
-    if (fs.existsSync(SESSION_ID_FILE)) fs.unlinkSync(SESSION_ID_FILE)
+    // Discard session so next prompt starts fresh from the restored state
+    opencodeSessionId = null
+    if (fs.existsSync(OC_SESSION_FILE)) fs.unlinkSync(OC_SESSION_FILE)
 
     res.json({ ok: true, messages, checkpoints })
   } catch (e) {
@@ -489,25 +611,18 @@ app.post('/deploy', async (req, res) => {
   try {
     if (hash) {
       const currentHead = (await execAsync('git rev-parse HEAD', { cwd: WORKSPACE })).stdout.trim()
-      const needsCheckout = hash !== currentHead
-      if (needsCheckout) {
+      if (hash !== currentHead) {
         const dirty = (await execAsync('git status --porcelain', { cwd: WORKSPACE })).stdout.trim().length > 0
-        if (dirty) {
-          await execAsync('git stash', { cwd: WORKSPACE })
-          stashed = true
-        }
+        if (dirty) { await execAsync('git stash', { cwd: WORKSPACE }); stashed = true }
         await execAsync(`git checkout ${hash}`, { cwd: WORKSPACE })
         checkedOut = true
       }
     }
 
     const deployedHash = (await execAsync('git rev-parse HEAD', { cwd: WORKSPACE })).stdout.trim()
-
     const { stderr: buildStderr } = await execAsync('npm run build', { cwd: WORKSPACE, timeout: 120000, env: buildEnv })
     if (buildStderr) console.error('build stderr:', buildStderr)
 
-    // Write .netlify/state.json before deploying so Netlify CLI always reuses the same site.
-    // This file is gitignored and lost on sandbox restart, so we restore it from stored metadata.
     const netlifyStateDir = path.join(WORKSPACE, '.netlify')
     const netlifyStatePath = path.join(netlifyStateDir, 'state.json')
     if (netlify_site_id) {
@@ -525,23 +640,16 @@ app.post('/deploy', async (req, res) => {
     if (!jsonMatch) throw new Error(`Unexpected netlify output: ${stdout.slice(0, 500)}`)
     const result = JSON.parse(jsonMatch[0])
 
-    // Prefer site_id from JSON output; fall back to reading .netlify/state.json.
-    // result.site_id is the stable Netlify site ID used to redeploy to the same site.
     let siteId = result.site_id || null
     if (!siteId) {
-      try {
-        const state = JSON.parse(fs.readFileSync(netlifyStatePath, 'utf8'))
-        siteId = state.siteId || null
-      } catch { /* state file missing */ }
+      try { siteId = JSON.parse(fs.readFileSync(netlifyStatePath, 'utf8')).siteId || null } catch {}
     }
 
-    // result.url is the permanent site URL; result.deploy_url is unique per deploy (has hash prefix).
     const url = result.url || result.site_url || result.deploy_url
     if (!url) throw new Error(`Deploy succeeded but no URL returned: ${JSON.stringify(result)}`)
 
     res.json({ ok: true, url, deployedHash, siteId })
   } catch (e) {
-    console.error('deploy error:', e)
     const detail = [e.stderr, e.stdout, e.message].filter(Boolean).join('\n').trim()
     res.status(500).json({ error: detail || String(e) })
   } finally {
@@ -552,16 +660,7 @@ app.post('/deploy', async (req, res) => {
   }
 })
 
-app.post('/stop', (req, res) => {
-  if (activeClaudeProc) {
-    wasStopped = true
-    activeClaudeProc.kill('SIGINT')
-  }
-  res.json({ ok: true })
-})
-
 app.post('/set-env', async (req, res) => {
-  // req.body.vars: { VITE_OPENAI_API_KEY: "sk-real-value", ... }
   const { vars } = req.body
   if (!vars || typeof vars !== 'object') {
     return res.status(400).json({ error: 'vars must be an object' })
@@ -577,7 +676,6 @@ app.post('/set-env', async (req, res) => {
       if (placeholderRe.test(content)) {
         content = content.replace(placeholderRe, `${name}=${value}`)
       } else {
-        // Append if not already present
         const existsRe = new RegExp(`^${escapedName}=`, 'm')
         if (!existsRe.test(content)) {
           content += (content.endsWith('\n') || content === '' ? '' : '\n') + `${name}=${value}\n`
@@ -586,14 +684,12 @@ app.post('/set-env', async (req, res) => {
     }
 
     fs.writeFileSync(envPath, content)
-    if (claudeUid !== null) {
+    if (buildmanUid !== null) {
       execSync(`chown buildman:buildman ${envPath}`, { stdio: 'pipe' })
     }
 
     // Restart Vite so it picks up the new .env values
-    try {
-      execSync('pkill -f "vite" || true', { stdio: 'pipe' })
-    } catch {}
+    try { execSync('pkill -f "vite" || true', { stdio: 'pipe' }) } catch {}
     await new Promise(r => setTimeout(r, 500))
     spawnVite()
 
@@ -604,5 +700,4 @@ app.post('/set-env', async (req, res) => {
 })
 
 initNonRootUser()
-initCredentials()
 app.listen(3001, () => console.log('Agent server ready on :3001'))

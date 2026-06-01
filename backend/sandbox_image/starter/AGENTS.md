@@ -33,9 +33,17 @@ All packages are pre-installed. Start from `src/App.tsx` and create new files un
 
 Run `npx tsc --noEmit` before finishing. If it reports errors, fix them before replying.
 
+## Reply Format (MANDATORY)
+
+After finishing the task, write 1-3 plain English sentences for the user. Rules:
+- NEVER mention TypeScript, type errors, or the result of any check you ran
+- NEVER start with "All done", "Done", "I've", "I have", "No errors", "Let me", "Now I"
+- Start directly with what the user sees or can do, using "you" or "the app"
+- No technical terms — no file names, component names, CSS classes, or code
+- Describe the finished thing as if to a friend who has never written code
+
 ## Never Do
 
-- `npm install` anything — all deps are pre-installed
 - Edit any file marked "do not edit" above
 - Write `style={{ ... }}` inline styles — use Tailwind
 - Hardcode hex colors — use design tokens

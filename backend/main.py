@@ -46,9 +46,9 @@ def _modal_app_dir() -> str:
 
 def _create_sandbox(project_id: str, user_id: str) -> dict:
     sys.path.insert(0, _modal_app_dir())
-    from modal_app import sandbox_image, claude_secret, netlify_secret  # noqa: PLC0415
+    from modal_app import sandbox_image, netlify_secret  # noqa: PLC0415
 
-    secrets = [s for s in [claude_secret, netlify_secret] if s is not None]
+    secrets = [s for s in [netlify_secret] if s is not None]
 
     sandbox = modal.Sandbox.create(
         "node", "/app/agent-server.js",
@@ -76,12 +76,10 @@ def _restore_from_snapshot(snapshot_id: str) -> dict:
     https://modal.com/docs/reference/modal.Image (from_id method)
     """
     sys.path.insert(0, _modal_app_dir())
-    from modal_app import claude_secret, netlify_secret  # noqa: PLC0415
+    from modal_app import netlify_secret  # noqa: PLC0415
 
-    # modal.Image.from_id() reconstructs an Image object from a stored ID.
-    # Confirmed available: modal.com/docs/reference/modal.Image
     image = modal.Image.from_id(snapshot_id)
-    secrets = [s for s in [claude_secret, netlify_secret] if s is not None]
+    secrets = [s for s in [netlify_secret] if s is not None]
 
     sandbox = modal.Sandbox.create(
         "node", "/app/agent-server.js",
@@ -402,23 +400,13 @@ async def open_project(project_id: str, req: OpenProjectRequest):
 
 
 def _wrap_prompt(text: str, is_first_prompt: bool = False) -> str:
-    name_rule = (
-        "- VERY FIRST TOKENS: Write exactly <name>2-4 word title</name> on its own line before anything else. "
-        "Title-case the name. Describe the app in 2-4 words (e.g. <name>Multi Timer App</name>). "
-        "This tag is stripped before display — it is only for internal bookkeeping.\n"
-    ) if is_first_prompt else "- Do NOT emit a <name> tag.\n"
-
-    return (
-        "STRICT RULES FOR YOUR REPLY TEXT (violating these is a failure):\n"
-        f"{name_rule}"
-        "- Never mention file names, paths, components, JSX, CSS, or any technical term.\n"
-        "- Never mention environment variables or .env files in your reply text.\n"
-        "- If the app needs an API key, say only: 'You'll be prompted to add your API key to complete the setup.'\n"
-        "- Never tell the user to open a browser, refresh, or take any action.\n"
-        "- Speak only about what the user can now SEE or DO in their app, in plain everyday English.\n"
-        "- Write as if describing the finished thing to a friend who has never written code.\n\n"
-        f"User request: {text}"
-    )
+    if is_first_prompt:
+        return (
+            "Begin your reply with exactly `<name>2-4 word title</name>` on its own line "
+            "before anything else. Title-case it (e.g. `<name>Todo List App</name>`).\n\n"
+            f"{text}"
+        )
+    return text
 
 
 @app.post("/prompt")

@@ -16,9 +16,6 @@ _EMBED_FILE = Path(__file__).parent / "sandbox_embedded.py"
 
 app = modal.App("buildman-v3")
 
-# Pro/Max: CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`
-claude_secret = modal.Secret.from_name("claude-credentials")
-
 # Netlify deploy token — create with: modal secret create netlify-credentials NETLIFY_AUTH_TOKEN=<token>
 try:
     netlify_secret = modal.Secret.from_name("netlify-credentials")
@@ -32,7 +29,7 @@ sandbox_image = (
     .run_commands(
         "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -",
         "apt-get install -y nodejs",
-        "npm install -g @anthropic-ai/claude-code netlify-cli",
+        "npm install -g opencode-ai netlify-cli",
         # Bake git identity globally so runtime never needs to set it per-repo.
         # safe.directory=* lets root operate on volumes owned by other users.
         "git config --global user.email agent@buildman.dev",
@@ -44,7 +41,7 @@ sandbox_image = (
         f"echo '{STARTER_TAR_GZ_B64}' | base64 -d | tar -xzf - -C /opt/starter",
         "cd /app && npm install",
         "cd /opt/starter && npm install",
-        "echo buildman-sandbox-v9-tailwind-lucide-inter > /app/.build-id",
+        "echo buildman-sandbox-v11-opencode > /app/.build-id",
     )
 )
 
@@ -58,9 +55,9 @@ backend_image = (
 
 @app.function(
     image=backend_image,
-    secrets=[claude_secret],
+    secrets=[],
     min_containers=1,
-    timeout=1800,  # Claude codegen can exceed 5 min; default 300s was cancelling /prompt
+    timeout=1800,
 )
 @modal.asgi_app()
 def fastapi_app():
@@ -89,7 +86,7 @@ def add_sandbox_to_pool() -> None:
     # Sandboxes live in a separate app so they don't pollute the control-plane logs.
     # Pattern from Modal's official sandbox_pool.py example.
     sandbox_app = modal.App.lookup("buildman-sandbox-pool-sandboxes", create_if_missing=True)
-    secrets = [s for s in [claude_secret, netlify_secret] if s is not None]
+    secrets = [s for s in [netlify_secret] if s is not None]
 
     sb = modal.Sandbox.create(
         "node", "/app/agent-server.js",

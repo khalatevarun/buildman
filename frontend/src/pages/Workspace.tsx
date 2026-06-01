@@ -168,6 +168,8 @@ export function Workspace() {
       if (!active) return
       const initialPrompt = location.state?.initialPrompt
       if (initialPrompt) {
+        // Clear from history state immediately so reload doesn't re-fire the prompt
+        window.history.replaceState({ ...window.history.state, usr: { ...location.state, initialPrompt: undefined } }, '')
         try {
           await sendPrompt(initialPrompt)
         } catch {
