@@ -49,9 +49,8 @@ print('Done')
 ```bash
 cd v2/frontend
 npm run dev       # Vite dev server (port 5173)
-npm run build     # tsc -b && vite build
+npm run build     # tsc -b && vite build (ALWAYS use this to verify frontend changes — not npx tsc --noEmit, which skips unused-locals checks)
 npm run lint      # ESLint
-npx tsc --noEmit  # Type check only
 ```
 
 ### Environment
