@@ -54,8 +54,8 @@ def _create_sandbox(project_id: str, user_id: str) -> dict:
         "node", "/app/agent-server.js",
         image=sandbox_image,
         secrets=secrets,
-        cpu=2.0,
-        memory=2048,
+        cpu=1.0,
+        memory=1024,
         timeout=3600,
         idle_timeout=900,
         encrypted_ports=[3001, 5173],
@@ -405,15 +405,40 @@ _AGENT_RULES = (
     "the user sees a live preview automatically. Just describe what you built.\n\n"
 )
 
+_QUALITY_BAR = (
+    "Build as if this is a real product. "
+    "No placeholder text, no 'Lorem ipsum', no 'Coming soon', no 'TODO'. "
+    "Every button, label, heading, and message should be what the real app would show. "
+    "Every screen that fetches data must have a loading state and an error state. "
+    "Every layout must work on both mobile and desktop.\n\n"
+)
+
+_PLAN_FIRST = (
+    "Before writing any code: think through all the pages, components, and data flows you need. "
+    "Plan the full component hierarchy first, then implement one file at a time.\n\n"
+)
+
 def _wrap_prompt(text: str, is_first_prompt: bool = False) -> str:
     if is_first_prompt:
         return (
             "Begin your reply with exactly `<name>2-4 word title</name>` on its own line "
             "before anything else. Title-case it (e.g. `<name>Todo List App</name>`).\n\n"
+            + _PLAN_FIRST
+            + _QUALITY_BAR
             + _AGENT_RULES
+            + "Build a complete, fully working version — all core flows functional, "
+            "no skeleton screens with TODO comments, no half-built features. "
+            "If the request implies multiple pages, wire up routing from the start.\n\n"
             + text
         )
-    return _AGENT_RULES + text
+    # Follow-up: preserve what exists, extend cleanly
+    return (
+        _AGENT_RULES
+        + "The existing app already works. Make only the changes the user is asking for — "
+        "do not rewrite or restructure what already exists. Extend it cleanly.\n\n"
+        + _QUALITY_BAR
+        + text
+    )
 
 
 @app.post("/prompt")
@@ -468,10 +493,21 @@ async def sandbox_status(user_id: str):
             await client.get(f"{session['agent_url']}/healthz")
         project_id = session.get("project_id")
         deploy_info = await _get_deploy_info(user_id, project_id) if project_id else {"deployed_hash": None, "deployed_url": None}
+        # Re-scan for empty env var placeholders so the frontend can restore the
+        # EnvVarCard after a page refresh without needing another prompt.
+        env_needed = []
+        try:
+            async with httpx.AsyncClient(timeout=3) as client:
+                r = await client.get(f"{session['agent_url']}/env-status")
+                if r.status_code == 200:
+                    env_needed = r.json().get("env_needed", [])
+        except Exception:
+            pass
         return {
             "status": "ready",
             "preview_url": session["preview_url"],
             "project_id": project_id,
+            "env_needed": env_needed,
             **deploy_info,
         }
     except Exception:
