@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
+import { Analytics } from '@vercel/analytics/react'
 import { Home } from './pages/Home'
 import { Apps } from './pages/Apps'
 import { Workspace } from './pages/Workspace'
@@ -13,6 +14,7 @@ export default function App() {
         <Route path="/workspace/:projectId" element={<Workspace />} />
       </Routes>
       <Toaster position="bottom-right" />
+      <Analytics />
     </>
   )
 }
