@@ -127,7 +127,7 @@ The control plane inside each sandbox. Key behaviors:
 
 ### Persistence
 
-Each project gets its own Modal Volume (`buildman-proj-{project_id}`), mounted at `/data`. After each prompt, the workspace is bundled with `git bundle create /data/workspace.bundle --all`. On sandbox startup, `/init-workspace` restores from the bundle via `git clone`. This keeps `/workspace` on fast local disk (no NFS latency during Claude's file I/O) while surviving sandbox restarts.
+After each session (`save_chat`), the backend calls `sandbox.snapshot_filesystem()` to capture the full VM state as a Modal image. On project reopen, `open_project` restores from that snapshot via `modal.Image.from_id(snapshot_id)`. Within a session, a git bundle at `/data/workspace.bundle` on the sandbox's local disk backs up the workspace after each prompt.
 
 ### `sandbox_embedded.py`
 

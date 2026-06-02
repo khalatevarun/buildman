@@ -17,8 +17,6 @@ const STARTER_DIR = '/opt/starter'
 const OC_SESSION_FILE = '/workspace/.opencode-session-id'
 const OC_PORT = 4096
 const OC_BASE = `http://127.0.0.1:${OC_PORT}`
-// OpenCode Zen — the default OpenCode provider (requires OPENCODE_API_KEY in Modal secrets).
-// To use local Ollama instead (zero credentials): set OC_PROVIDER='ollama' and OC_MODEL to your model.
 const OC_PROVIDER = 'opencode'
 const OC_MODEL = 'deepseek-v4-flash-free'
 
