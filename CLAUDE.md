@@ -2,12 +2,12 @@
 
 ## Deployment Rule — ALWAYS follow this after any backend change
 
-**Any change to `backend/main.py`, `backend/sandbox_image/agent-server.js`, `backend/sandbox_image/package.json`, or `backend/sandbox_image/starter/*` MUST be deployed to Modal before the work is considered done.**
+**Any change to `backend/api/main.py`, `backend/sandbox_image/agent-server.js`, `backend/sandbox_image/package.json`, or `backend/sandbox_image/starter/*` MUST be deployed to Modal before the work is considered done.**
 
 Steps (always run from `v2/`):
-1. If `agent-server.js`, `package.json`, or `starter/*` changed → rebuild `sandbox_embedded.py` first (see command below)
+1. If `agent-server.js`, `package.json`, or `starter/*` changed → rebuild `backend/sandbox_embedded.py` first (see command below)
 2. Activate venv: `source .venv/bin/activate`
-3. Deploy: `.venv/bin/modal deploy modal_app.py`
+3. Deploy: `.venv/bin/modal deploy backend/modal_app.py`
 
 Do not wait for the user to ask — deploy immediately after making backend changes.
 
@@ -19,19 +19,19 @@ cd v2
 source .venv/bin/activate
 
 # Run locally (not typical — backend is designed to run on Modal)
-uvicorn backend.main:app --port 8000
+uvicorn backend.api.main:app --port 8000
 
 # Deploy to Modal (REQUIRED after every backend change)
-.venv/bin/modal deploy modal_app.py
+.venv/bin/modal deploy backend/modal_app.py
 
-# After editing agent-server.js or starter/*, rebuild sandbox_embedded.py first:
+# After editing agent-server.js or starter/*, rebuild backend/sandbox_embedded.py first:
 python3 -c "
 import base64, subprocess
 result = subprocess.run(['tar','-czf','-','--exclude=./node_modules','-C','backend/sandbox_image/starter','.'], capture_output=True)
 starter_b64 = base64.b64encode(result.stdout).decode()
 with open('backend/sandbox_image/agent-server.js','rb') as f: agent_b64 = base64.b64encode(f.read()).decode()
 with open('backend/sandbox_image/package.json','rb') as f: pkg_b64 = base64.b64encode(f.read()).decode()
-with open('sandbox_embedded.py','w') as f:
+with open('backend/sandbox_embedded.py','w') as f:
     f.write(f'AGENT_SERVER_B64 = \"{agent_b64}\"\nPACKAGE_JSON_B64 = \"{pkg_b64}\"\nSTARTER_TAR_GZ_B64 = \"{starter_b64}\"\n')
 print('Done')
 "
@@ -88,7 +88,7 @@ Modal secrets required: `claude-credentials` containing `CLAUDE_CODE_OAUTH_TOKEN
 - `PreviewPane.tsx` — iframe wrapper with reload/fullscreen toolbar icons (CSS `group/preview` hover, no React state); single loading word picked per prompt from a 70-word list
 - `utility/api.ts` — axios instance at `VITE_API_URL`; native `fetch` used for SSE endpoints
 
-**2. Backend** (`backend/main.py`) — FastAPI served on Modal via `@modal.asgi_app()`
+**2. Backend** (`backend/api/main.py`) — FastAPI served on Modal via `@modal.asgi_app()`
 
 Sessions stored in `modal.Dict("buildman-sessions")`, keyed by `user_id`.
 Project metadata stored in `modal.Dict("buildman-project-list")`, keyed by `user_id`.
@@ -133,7 +133,7 @@ Each project gets its own Modal Volume (`buildman-proj-{project_id}`), mounted a
 
 Auto-generated file — do not edit manually. Contains base64-encoded `agent-server.js`, `package.json`, and the starter template tarball. Baked into the Modal image at build time. Must be regenerated before `modal deploy` whenever sandbox image files change.
 
-### Modal App (`modal_app.py`)
+### Modal App (`backend/modal_app.py`)
 
 Defines two images:
 - `sandbox_image` — the per-user VM image (Debian + Node 20 + Claude Code + Netlify CLI + pre-installed starter)
