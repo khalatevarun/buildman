@@ -2,7 +2,7 @@
   <img src="docs/logos/buildman.svg" alt="Buildman" width="80" />
   <h1>Buildman</h1>
   <p>Yet another AI app builder.</p>
-  <p>Describe what you want. Watch it get built live in a real cloud VM. Deploy to Netlify in one click.</p>
+  <p>Describe what you want. Watch it get built. Queue your next change while it's still working. Ship when you're ready.</p>
 
   <br />
 
@@ -19,12 +19,11 @@
 
 ## Features
 
-- **Live preview** — every prompt streams changes into an iframe in real time
-- **Chat-based iteration** — refine your app conversationally across multiple prompts
-- **Git checkpoints** — every prompt produces a commit; jump back to any version
-- **One-click deploy** — ships directly to a dedicated Netlify site per project
-- **Persistent workspaces** — projects survive sandbox restarts via Modal filesystem snapshots
-- **Sandbox pool** — a pool of 2 pre-warmed VMs is maintained by a scheduled job every 5 minutes, so new projects start instantly
+- **Live preview** — see your app update as the AI builds it
+- **Chat to iterate** — refine with follow-up prompts in plain English
+- **Prompt queue** — stack requests while the AI is working; they run in order
+- **Version history** — every change is saved; jump back to any point
+- **One-click deploy** — publish to a live URL; each project gets its own site
 - **Starter template** — every project begins from a production-ready React + Vite + Tailwind base
 
 ---
@@ -66,11 +65,11 @@ flowchart TD
 
 **Sandbox Pool** — A Modal Queue holds 2 pre-warmed VMs. New projects claim from the pool instantly; a background scheduled function tops it back up every 5 minutes.
 
-**Modal Sandbox VM** — One ephemeral VM per user. Spun up from a baked Debian image with Node 20, opencode-ai, and Netlify CLI pre-installed. Idle timeout: 15 min.
+**Modal Sandbox** — One isolated environment per user. Spun up from a baked Debian image with Node 20, opencode-ai, and Netlify CLI pre-installed. Idle timeout: 15 min.
 
 **agent-server.js** — Express control plane inside the sandbox (port 3001). Receives prompts, drives opencode-ai, commits checkpoints, and handles deploy/restore.
 
-**opencode-ai** — Runs `deepseek-v4-flash-free` (free, no API key required). Edits files inside `/workspace` in response to each prompt.
+**opencode-ai** — Free, no API key required. Edits files inside `/workspace` in response to each prompt.
 
 **Modal Image Snapshot** — After each session (`save_chat`), the FastAPI backend calls `sandbox.snapshot_filesystem()` to capture the full VM state. On project reopen, it restores from that snapshot so work is never lost.
 
