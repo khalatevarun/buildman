@@ -1,22 +1,27 @@
 import { configureStore, createSlice } from '@reduxjs/toolkit'
 import type { PayloadAction } from '@reduxjs/toolkit'
+import { useDispatch, useSelector } from 'react-redux'
+import type { TypedUseSelectorHook } from 'react-redux'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
   text: string
   activities: string[]
+  stopped?: boolean
+  isFinal?: boolean
+  thinking?: string
 }
 
 interface CheckpointEntry {
   hash: string
   timestamp: number
+  buildBroken?: boolean
 }
 
-export interface EnvVar {
-  name: string
-  service: string | null
+export interface EnvVarGroup {
+  service: string
   url: string | null
-  hint: string | null
+  vars: string[]
 }
 
 interface AppState {
@@ -25,10 +30,12 @@ interface AppState {
   checkpoints: CheckpointEntry[]
   previewingHash: string | null
   streaming: boolean
-  envNeeded: EnvVar[] | null
+  envNeeded: EnvVarGroup[] | null
   deployedHash: string | null
   deployedUrl: string | null
   projectName: string | null
+  promptQueue: string[]
+  pendingInput: string | null
 }
 
 const initialState: AppState = {
@@ -41,6 +48,8 @@ const initialState: AppState = {
   deployedHash: null,
   deployedUrl: null,
   projectName: null,
+  promptQueue: [],
+  pendingInput: null,
 }
 
 const appSlice = createSlice({
@@ -50,6 +59,9 @@ const appSlice = createSlice({
     addUserMessage(state, action: PayloadAction<string>) {
       state.messages.push({ role: 'user', text: action.payload, activities: [] })
       state.liveActivity = []
+    },
+    addAssistantMessage(state) {
+      state.messages.push({ role: 'assistant', text: '', activities: [] })
     },
     appendChatOutput(state, action: PayloadAction<string>) {
       const last = state.messages[state.messages.length - 1]
@@ -67,10 +79,11 @@ const appSlice = createSlice({
       const last = state.messages[state.messages.length - 1]
       if (last?.role === 'assistant') {
         last.activities = action.payload
+        last.isFinal = true
       }
       state.liveActivity = []
     },
-    addCheckpoint(state, action: PayloadAction<{ hash: string; timestamp: number }>) {
+    addCheckpoint(state, action: PayloadAction<{ hash: string; timestamp: number; buildBroken?: boolean }>) {
       state.checkpoints.push(action.payload)
     },
     setPreviewingHash(state, action: PayloadAction<string | null>) {
@@ -79,7 +92,7 @@ const appSlice = createSlice({
     setStreaming(state, action: PayloadAction<boolean>) {
       state.streaming = action.payload
     },
-    setEnvNeeded(state, action: PayloadAction<EnvVar[] | null>) {
+    setEnvNeeded(state, action: PayloadAction<EnvVarGroup[] | null>) {
       state.envNeeded = action.payload
     },
     setDeployedHash(state, action: PayloadAction<string | null>) {
@@ -95,14 +108,35 @@ const appSlice = createSlice({
       state.messages = action.payload.messages
       state.checkpoints = action.payload.checkpoints
     },
-    // Truncates messages and checkpoints to only those up to (and including) the given hash.
-    // checkpoint[i] pairs with the (i+1)-th assistant message, so keep 2*(i+1) messages.
-    truncateToCheckpoint(state, action: PayloadAction<string>) {
-      const i = state.checkpoints.findIndex(cp => cp.hash === action.payload)
-      if (i === -1) return
-      state.checkpoints = state.checkpoints.slice(0, i + 1)
-      state.messages = state.messages.slice(0, 2 * (i + 1))
-      state.previewingHash = null
+    enqueuePrompt(state, action: PayloadAction<string>) {
+      state.promptQueue.push(action.payload)
+    },
+    dequeuePrompt(state) {
+      state.promptQueue.shift()
+    },
+    removeFromQueue(state, action: PayloadAction<number>) {
+      state.promptQueue.splice(action.payload, 1)
+    },
+    clearQueue(state) {
+      state.promptQueue = []
+    },
+    cancelLastExchange(state) {
+      let lastUserIdx = -1
+      for (let i = state.messages.length - 1; i >= 0; i--) {
+        if (state.messages[i].role === 'user') { lastUserIdx = i; break }
+      }
+      if (lastUserIdx !== -1) state.messages = state.messages.slice(0, lastUserIdx)
+      state.liveActivity = []
+    },
+    setPendingInput(state, action: PayloadAction<string | null>) {
+      state.pendingInput = action.payload
+    },
+    setAssistantFinalText(state, action: PayloadAction<string>) {
+      const last = state.messages[state.messages.length - 1]
+      if (last?.role === 'assistant') {
+        last.thinking = last.text
+        last.text = action.payload
+      }
     },
     resetWorkspace() {
       return initialState
@@ -112,6 +146,7 @@ const appSlice = createSlice({
 
 export const {
   addUserMessage,
+  addAssistantMessage,
   appendChatOutput,
   pushActivity,
   finalizeMessage,
@@ -123,11 +158,20 @@ export const {
   setDeployedUrl,
   setProjectName,
   restoreHistory,
-  truncateToCheckpoint,
   resetWorkspace,
+  enqueuePrompt,
+  dequeuePrompt,
+  removeFromQueue,
+  clearQueue,
+  cancelLastExchange,
+  setPendingInput,
+  setAssistantFinalText,
 } = appSlice.actions
 
 export const store = configureStore({ reducer: { app: appSlice.reducer } })
 
 export type RootState = ReturnType<typeof store.getState>
 export type AppDispatch = typeof store.dispatch
+
+export const useAppDispatch: () => AppDispatch = useDispatch
+export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector

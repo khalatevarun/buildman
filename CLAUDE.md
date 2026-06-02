@@ -35,7 +35,7 @@ uvicorn backend.main:app --port 8000
 # After editing agent-server.js or starter/*, rebuild sandbox_embedded.py first:
 python3 -c "
 import base64, subprocess
-result = subprocess.run(['tar','-czf','-','-C','backend/sandbox_image/starter','.'], capture_output=True)
+result = subprocess.run(['tar','-czf','-','--exclude=./node_modules','-C','backend/sandbox_image/starter','.'], capture_output=True)
 starter_b64 = base64.b64encode(result.stdout).decode()
 with open('backend/sandbox_image/agent-server.js','rb') as f: agent_b64 = base64.b64encode(f.read()).decode()
 with open('backend/sandbox_image/package.json','rb') as f: pkg_b64 = base64.b64encode(f.read()).decode()
@@ -49,9 +49,8 @@ print('Done')
 ```bash
 cd v2/frontend
 npm run dev       # Vite dev server (port 5173)
-npm run build     # tsc -b && vite build
+npm run build     # tsc -b && vite build (ALWAYS use this to verify frontend changes — not npx tsc --noEmit, which skips unused-locals checks)
 npm run lint      # ESLint
-npx tsc --noEmit  # Type check only
 ```
 
 ### Environment
@@ -156,6 +155,4 @@ The FastAPI function runs with `min_containers=1` (always-warm) and `timeout=180
 - **Prewarm is invisible** — prewarm sandboxes are never added to `buildman-project-list`; the project only appears in the list after the user submits a prompt (via PATCH rename)
 - **`cancelPrewarm()` must be called on Home unmount** — otherwise the prewarm sandbox leaks; it calls `DELETE /sandbox` only if the prewarm was never consumed
 - **Per-project Netlify sites** — each project deploys to its own Netlify site; `deployed_hash` and `deployed_url` are stored in the project metadata and returned on sandbox open/status
-- `volume_manager.py` is dead code — ignore it
-- `useCheckpoints.ts` and `CheckpointList.tsx` in the frontend are unused
 - Frontend uses native `fetch` (not axios) for SSE endpoints because axios does not support streaming SSE

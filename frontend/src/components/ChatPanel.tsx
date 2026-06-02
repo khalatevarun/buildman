@@ -1,10 +1,17 @@
-import { useRef, useEffect, useState } from 'react'
-import { useSelector, useDispatch } from 'react-redux'
+import { useRef, useEffect, useState, useMemo, useCallback, memo } from 'react'
+import { Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
-import { toast } from 'sonner'
 import { api } from '../utility/api'
-import { setPreviewingHash, setEnvNeeded, restoreHistory } from '../store'
-import type { RootState } from '../store'
+import {
+  setPreviewingHash,
+  setEnvNeeded,
+  restoreHistory,
+  enqueuePrompt,
+  removeFromQueue,
+  setPendingInput,
+  useAppDispatch,
+  useAppSelector,
+} from '../store'
 import { ActivityTicker } from './ActivityTicker'
 import { CheckpointCard } from './CheckpointCard'
 import { EnvVarCard } from './EnvVarCard'
@@ -16,10 +23,30 @@ const THINKING_WORDS = [
 
 interface Props {
   onSend: (text: string) => void
+  onStop: () => void
   userId: string | null
   publishingHash: string | null
   onDeploy: (hash: string) => Promise<string>
+  projectName: string | null
 }
+
+const ThinkingText = memo(function ThinkingText({ text }: { text: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight
+  }, [text])
+  return (
+    <div
+      ref={ref}
+      className="max-h-[72px] overflow-y-hidden"
+      style={{ scrollbarWidth: 'none' }}
+    >
+      <div className="text-[10.5px] leading-relaxed text-muted-foreground/35 font-mono whitespace-pre-wrap break-words">
+        {text}
+      </div>
+    </div>
+  )
+})
 
 function ThinkingDots({ word }: { word: string }) {
   return (
@@ -42,64 +69,93 @@ function ThinkingDots({ word }: { word: string }) {
   )
 }
 
-export function ChatPanel({ onSend, userId, publishingHash, onDeploy }: Props) {
-  const dispatch = useDispatch()
-  const messages = useSelector((s: RootState) => s.app.messages)
-  const streaming = useSelector((s: RootState) => s.app.streaming)
-  const liveActivity = useSelector((s: RootState) => s.app.liveActivity)
-  const checkpoints = useSelector((s: RootState) => s.app.checkpoints)
-  const previewingHash = useSelector((s: RootState) => s.app.previewingHash)
-  const envNeeded = useSelector((s: RootState) => s.app.envNeeded)
-  const deployedHash = useSelector((s: RootState) => s.app.deployedHash)
-  const deployedUrl = useSelector((s: RootState) => s.app.deployedUrl)
+export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, projectName }: Props) {
+  const dispatch = useAppDispatch()
+  const messages = useAppSelector(s => s.app.messages)
+  const streaming = useAppSelector(s => s.app.streaming)
+  const liveActivity = useAppSelector(s => s.app.liveActivity)
+  const checkpoints = useAppSelector(s => s.app.checkpoints)
+  const previewingHash = useAppSelector(s => s.app.previewingHash)
+  const envNeeded = useAppSelector(s => s.app.envNeeded)
+  const deployedHash = useAppSelector(s => s.app.deployedHash)
+  const promptQueue = useAppSelector(s => s.app.promptQueue)
+  const pendingInput = useAppSelector(s => s.app.pendingInput)
   const [input, setInput] = useState('')
   const [thinkingWord, setThinkingWord] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    if (pendingInput) {
+      setInput(pendingInput)
+      dispatch(setPendingInput(null))
+    }
+  }, [pendingInput, dispatch])
+
+  useEffect(() => {
     if (streaming) setThinkingWord(THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)])
   }, [streaming])
 
-  const handleEnvSubmit = async (values: Record<string, string>) => {
+  const handleEnvSubmit = useCallback(async (values: Record<string, string>) => {
     if (!userId) return
     await api.post('/set-env', { user_id: userId, vars: values })
     dispatch(setEnvNeeded(null))
-  }
+  }, [userId, dispatch])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, liveActivity])
 
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     const text = input.trim()
-    if (!text || streaming || previewingHash || publishingHash) return
+    if (!text || previewingHash || publishingHash) return
     setInput('')
+    if (streaming) {
+      dispatch(enqueuePrompt(text))
+      return
+    }
     onSend(text)
-  }
+  }, [input, previewingHash, publishingHash, streaming, dispatch, onSend])
 
-  const handlePreview = async (hash: string) => {
+  const handlePreview = useCallback(async (hash: string) => {
     if (!userId) return
     if (checkpoints[checkpoints.length - 1]?.hash === hash) return
     await api.post('/preview', { user_id: userId, hash })
     dispatch(setPreviewingHash(hash))
-  }
+  }, [userId, checkpoints, dispatch])
 
-  const handleRestore = async (hash: string) => {
+  const handleRestore = useCallback(async (hash: string) => {
     if (!userId) return
-    // The server truncates chat.json atomically as part of the git reset,
-    // then returns the authoritative truncated state — no client-side math needed.
     const { data } = await api.post<{ ok: boolean; messages: typeof messages; checkpoints: typeof checkpoints }>(
       '/restore', { user_id: userId, hash }
     )
     if (data?.messages && data?.checkpoints) {
       dispatch(restoreHistory({ messages: data.messages, checkpoints: data.checkpoints }))
     }
-  }
+  }, [userId, dispatch]) // messages/checkpoints only used for the response type annotation
 
-  let assistantCount = 0
+  // Pre-compute checkpoint index for each message — avoids a mutable counter in render
+  const checkpointIndices = useMemo(() => {
+    let count = 0
+    return messages.map(m => (m.isFinal ? count++ : -1))
+  }, [messages])
 
   return (
     <div className="flex flex-col h-full bg-background">
+      {/* Nav header */}
+      <div className="flex items-center justify-between px-4 h-10 shrink-0 border-b border-border">
+        <Link
+          to="/apps"
+          className="flex items-center text-foreground hover:text-white transition-colors duration-150 no-underline"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M6.5 1.5L2 5l4.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </Link>
+        <span className="text-[11px] font-semibold tracking-tight text-foreground/85 font-heading truncate max-w-[180px]">
+          {projectName ?? 'Buildman'}
+        </span>
+        <div className="w-[10px]" />
+      </div>
       {/* Messages */}
       <div className="flex-1 overflow-y-auto py-5 space-y-5" style={{ scrollbarWidth: 'none' }}>
         {messages.map((m, i) => {
@@ -113,9 +169,8 @@ export function ChatPanel({ onSend, userId, publishingHash, onDeploy }: Props) {
             )
           }
 
-          const cpIndex = assistantCount
-          assistantCount++
-          const checkpoint = checkpoints[cpIndex]
+          const cpIndex = checkpointIndices[i]
+          const checkpoint = cpIndex >= 0 ? checkpoints[cpIndex] : undefined
           const isLastMessage = i === messages.length - 1
           const isActiveMessage = isLastMessage && streaming
           const tickerItems = isActiveMessage ? liveActivity : (m.activities ?? [])
@@ -123,23 +178,33 @@ export function ChatPanel({ onSend, userId, publishingHash, onDeploy }: Props) {
           return (
             <div key={i} className="flex flex-col gap-2">
               <div className="px-4">
-                {isActiveMessage && !m.text && liveActivity.length === 0 ? (
-                  <ThinkingDots word={thinkingWord} />
-                ) : (
-                  <div className={`
-                    text-[13px] leading-[1.65] text-foreground/75
-                    prose prose-invert prose-sm max-w-none
-                    prose-p:my-[0.4em] prose-p:text-foreground/75 prose-p:leading-[1.65]
-                    prose-headings:text-foreground/85 prose-headings:font-heading prose-headings:font-semibold prose-headings:tracking-tight
-                    prose-strong:text-foreground/90 prose-strong:font-semibold
-                    prose-code:text-primary prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-[11.5px] prose-code:font-mono prose-code:before:content-none prose-code:after:content-none
-                    prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-pre:rounded-lg prose-pre:text-[11.5px]
-                    prose-ul:text-foreground/70 prose-li:text-foreground/70 prose-li:my-[0.2em]
-                    prose-a:text-primary prose-a:no-underline hover:prose-a:underline
-                  `}>
-                    <ReactMarkdown>{m.text}</ReactMarkdown>
-                  </div>
-                )}
+                {(() => {
+                  const thinkingText = isActiveMessage ? m.text : null
+                  return (
+                    <>
+                      {thinkingText ? (
+                        <ThinkingText text={thinkingText} />
+                      ) : isActiveMessage && liveActivity.length === 0 ? (
+                        <ThinkingDots word={thinkingWord} />
+                      ) : null}
+                      {!isActiveMessage && m.text && (
+                        <div className={`
+                          text-[13px] leading-[1.65] text-foreground/75
+                          prose prose-invert prose-sm max-w-none
+                          prose-p:my-[0.4em] prose-p:text-foreground/75 prose-p:leading-[1.65]
+                          prose-headings:text-foreground/85 prose-headings:font-heading prose-headings:font-semibold prose-headings:tracking-tight
+                          prose-strong:text-foreground/90 prose-strong:font-semibold
+                          prose-code:text-primary prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-[11.5px] prose-code:font-mono prose-code:before:content-none prose-code:after:content-none
+                          prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-pre:rounded-lg prose-pre:text-[11.5px]
+                          prose-ul:text-foreground/70 prose-li:text-foreground/70 prose-li:my-[0.2em]
+                          prose-a:text-primary prose-a:no-underline hover:prose-a:underline
+                        `}>
+                          <ReactMarkdown>{m.text}</ReactMarkdown>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
 
               {tickerItems.length > 0 && (
@@ -153,8 +218,8 @@ export function ChatPanel({ onSend, userId, publishingHash, onDeploy }: Props) {
                   versionNumber={cpIndex + 1}
                   totalVersions={checkpoints.length}
                   isDeployed={checkpoint.hash === deployedHash}
-                  deployedUrl={checkpoint.hash === deployedHash ? deployedUrl : null}
                   publishing={publishingHash === checkpoint.hash}
+                  buildBroken={checkpoint.buildBroken}
                   onPreview={handlePreview}
                   onRestore={handleRestore}
                   onDeploy={onDeploy}
@@ -179,7 +244,7 @@ export function ChatPanel({ onSend, userId, publishingHash, onDeploy }: Props) {
 
         {envNeeded && envNeeded.length > 0 && !streaming && (
           <div className="px-4">
-            <EnvVarCard vars={envNeeded} onSubmit={handleEnvSubmit} />
+            <EnvVarCard groups={envNeeded} onSubmit={handleEnvSubmit} />
           </div>
         )}
 
@@ -200,11 +265,30 @@ export function ChatPanel({ onSend, userId, publishingHash, onDeploy }: Props) {
           </p>
         )}
 
+        {/* Queued prompts */}
+        {promptQueue.length > 0 && !previewingHash && (
+          <div className="mb-1.5 flex flex-col gap-1">
+            {promptQueue.map((item, i) => (
+              <div key={`${i}:${item}`} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/60 border border-border/40">
+                <span className="text-[10px] text-muted-foreground/30 shrink-0">↳</span>
+                <span className="flex-1 text-[12px] text-muted-foreground/60 truncate">{item}</span>
+                <button
+                  onClick={() => dispatch(removeFromQueue(i))}
+                  className="text-[13px] leading-none text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors shrink-0"
+                  aria-label="Remove from queue"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="relative">
           <textarea
             className="w-full text-[13px] text-foreground/80 rounded-xl px-3.5 py-2.5 pr-10 resize-none focus:outline-none placeholder:text-muted-foreground/40 leading-relaxed transition-colors duration-150 bg-muted border border-border focus:border-border/60"
             rows={3}
-            placeholder="Describe what to change…"
+            placeholder={streaming ? 'Queue a follow-up…' : 'Describe what to change…'}
             value={input}
             disabled={!!previewingHash || !!publishingHash}
             onChange={e => setInput(e.target.value)}
@@ -215,16 +299,28 @@ export function ChatPanel({ onSend, userId, publishingHash, onDeploy }: Props) {
               }
             }}
           />
-          <button
-            onClick={handleSend}
-            disabled={streaming || !input.trim() || !!previewingHash || !!publishingHash}
-            className="absolute bottom-2.5 right-2.5 w-6 h-6 flex items-center justify-center rounded-md transition-all duration-150 disabled:opacity-20 disabled:cursor-not-allowed bg-muted hover:bg-card text-muted-foreground"
-            aria-label="Send"
-          >
-            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-              <path d="M5.5 9.5V1.5M5.5 1.5L2 5M5.5 1.5L9 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+          {streaming ? (
+            <button
+              onClick={onStop}
+              className="absolute bottom-2.5 right-2.5 w-6 h-6 flex items-center justify-center rounded-md transition-all duration-150 bg-muted hover:bg-card text-muted-foreground"
+              aria-label="Stop"
+            >
+              <svg width="9" height="9" viewBox="0 0 9 9" fill="currentColor">
+                <rect x="0" y="0" width="9" height="9" rx="1.5"/>
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || !!previewingHash || !!publishingHash}
+              className="absolute bottom-2.5 right-2.5 w-6 h-6 flex items-center justify-center rounded-md transition-all duration-150 disabled:opacity-20 disabled:cursor-not-allowed bg-muted hover:bg-card text-muted-foreground"
+              aria-label="Send"
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                <path d="M5.5 9.5V1.5M5.5 1.5L2 5M5.5 1.5L9 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          )}
         </div>
       </div>
     </div>

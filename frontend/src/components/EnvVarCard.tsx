@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import type { EnvVar } from '../store'
+import type { EnvVarGroup } from '../store'
 
 interface Props {
-  vars: EnvVar[]
+  groups: EnvVarGroup[]
   onSubmit: (values: Record<string, string>) => Promise<void>
 }
 
@@ -29,15 +29,24 @@ function ExternalLinkIcon() {
   )
 }
 
-export function EnvVarCard({ vars, onSubmit }: Props) {
+function formatLabel(varName: string): string {
+  return varName
+    .replace(/^VITE_/, '')
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, c => c.toUpperCase())
+}
+
+export function EnvVarCard({ groups, onSubmit }: Props) {
+  const allVars = groups.flatMap(g => g.vars)
   const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(vars.map(v => [v.name, '']))
+    Object.fromEntries(allVars.map(v => [v, '']))
   )
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  const allFilled = vars.every(v => values[v.name]?.trim())
+  const allFilled = allVars.every(v => values[v]?.trim())
 
   const handleSubmit = async () => {
     if (!allFilled || saving) return
@@ -71,58 +80,57 @@ export function EnvVarCard({ vars, onSubmit }: Props) {
           <circle cx="6" cy="8.5" r="0.8" fill="currentColor"/>
         </svg>
         <span className="text-[12px] font-medium text-muted-foreground/45" style={{ letterSpacing: '-0.01em' }}>
-          API key{vars.length > 1 ? 's' : ''} needed
+          Add Environment Variables
         </span>
       </div>
 
-      {/* Key rows */}
-      <div className="px-4 py-3 flex flex-col gap-3.5">
-        {vars.map(v => (
-          <div key={v.name} className="flex flex-col gap-1.5">
+      {/* Groups */}
+      <div className="divide-y divide-border">
+        {groups.map((group, i) => (
+          <div key={i} className="px-4 py-3 flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-baseline gap-2">
-                <span className="text-[11.5px] font-mono tracking-tight text-foreground/55">
-                  {v.name}
-                </span>
-                {v.service && (
-                  <span className="text-[11px] text-foreground/25">{v.service}</span>
-                )}
-              </div>
-              {v.url && (
+              <span className="text-[11.5px] font-medium text-foreground/40">{group.service}</span>
+              {group.url && (
                 <a
-                  href={v.url}
+                  href={group.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-[11px] transition-colors duration-100 shrink-0 ml-3 text-foreground/35 hover:text-foreground/65"
+                  className="flex items-center gap-1 text-[11px] transition-colors duration-100 shrink-0 text-foreground/35 hover:text-foreground/65"
                 >
-                  Get key <ExternalLinkIcon />
+                  Get keys <ExternalLinkIcon />
                 </a>
               )}
             </div>
-
-            <div className="relative">
-              <input
-                type={revealed[v.name] ? 'text' : 'password'}
-                value={values[v.name]}
-                placeholder={v.hint ?? `Paste key…`}
-                onChange={e => setValues(prev => ({ ...prev, [v.name]: e.target.value }))}
-                className="w-full text-[12px] font-mono rounded-lg px-3 py-2 pr-9 focus:outline-none transition-colors duration-150 placeholder:text-muted-foreground/30 bg-background border border-border focus:border-border/60 text-foreground/80"
-              />
-              <button
-                type="button"
-                onClick={() => setRevealed(prev => ({ ...prev, [v.name]: !prev[v.name] }))}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/25 hover:text-muted-foreground/50 transition-colors duration-100"
-                tabIndex={-1}
-              >
-                <EyeIcon open={revealed[v.name]} />
-              </button>
-            </div>
+            {group.vars.map(varName => (
+              <div key={varName} className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-mono tracking-tight text-foreground/45">
+                  {formatLabel(varName)}
+                </span>
+                <div className="relative">
+                  <input
+                    type={revealed[varName] ? 'text' : 'password'}
+                    value={values[varName]}
+                    placeholder="Paste value…"
+                    onChange={e => setValues(prev => ({ ...prev, [varName]: e.target.value }))}
+                    className="w-full text-[12px] font-mono rounded-lg px-3 py-2 pr-9 focus:outline-none transition-colors duration-150 placeholder:text-muted-foreground/30 bg-background border border-border focus:border-border/60 text-foreground/80"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setRevealed(prev => ({ ...prev, [varName]: !prev[varName] }))}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/25 hover:text-muted-foreground/50 transition-colors duration-100"
+                    tabIndex={-1}
+                  >
+                    <EyeIcon open={!!revealed[varName]} />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         ))}
       </div>
 
       {/* Footer */}
-      <div className="px-4 pb-4">
+      <div className="px-4 pb-4 pt-1">
         <button
           onClick={handleSubmit}
           disabled={!allFilled || saving}

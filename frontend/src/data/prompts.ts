@@ -1,75 +1,63 @@
-export const EXAMPLES = [
-  'A weather dashboard using the OpenWeatherMap API',
-  'A chat app powered by OpenAI GPT-4o',
-  'A Pomodoro timer with session history',
-  'A GitHub repo explorer with star counts',
-  'A news reader with AI-generated summaries',
-  'A habit tracker with a streak calendar',
-]
+// Layout rules:
+//   • All items use translateX(-50%) so they centre on their x%.
+//   • Items with x > 88 use translateX(-100%) to avoid right-edge clipping.
+//   • Every row has a unique left and right x so no vertical column forms.
+//   • 3-item rows (≤ 50 char prompts): left x ∈ 10-20, right x ∈ 78-87
+//   • 4-item rows (≤ 33 char prompts): left x ∈ 11-16, right x ∈ 80-87
 
 export const SCATTERED = [
-  // row 1
-  { x: 4,   y: 4,  text: 'A Spotify clone with playlists' },
-  { x: 22,  y: 3,  text: 'A real-time collaborative whiteboard' },
-  { x: 44,  y: 2,  text: 'A markdown blog with syntax highlighting' },
-  { x: 63,  y: 5,  text: 'A kanban board with drag-and-drop' },
-  { x: 80,  y: 3,  text: 'A stock portfolio tracker' },
-  { x: 94,  y: 6,  text: 'A recipe app with ingredient search' },
-  // row 2
-  { x: 7,   y: 12, text: 'A multiplayer quiz with leaderboard' },
-  { x: 25,  y: 11, text: 'A URL shortener with analytics' },
-  { x: 48,  y: 13, text: 'A budget tracker with categories' },
-  { x: 70,  y: 10, text: 'A type-speed test with live WPM' },
-  { x: 88,  y: 13, text: 'A flashcard app with spaced repetition' },
-  // row 3
-  { x: 3,   y: 22, text: 'A drawing canvas with shape tools' },
-  { x: 19,  y: 21, text: 'A currency converter with live rates' },
-  { x: 38,  y: 23, text: 'A code snippet manager with tags' },
-  { x: 57,  y: 20, text: 'A job board with application tracker' },
-  { x: 75,  y: 24, text: 'A chess game with move history' },
-  { x: 93,  y: 21, text: 'A calorie counter with macros' },
-  // row 4
-  { x: 5,   y: 34, text: 'A timezone world clock for teams' },
-  { x: 18,  y: 36, text: 'A personal finance dashboard' },
-  { x: 33,  y: 33, text: 'A daily journal with mood tracking' },
-  { x: 50,  y: 35, text: 'A font pairing explorer' },
-  { x: 67,  y: 34, text: 'An API rate limiter dashboard' },
-  { x: 82,  y: 33, text: 'A password manager with vault' },
-  { x: 94,  y: 36, text: 'A link-in-bio page builder' },
-  // row 5
-  { x: 4,   y: 47, text: 'A note-taking app with backlinks' },
-  { x: 16,  y: 49, text: 'A sleep tracker with insights' },
-  { x: 31,  y: 46, text: 'A minimal RSS reader' },
-  { x: 48,  y: 48, text: 'A side-project idea generator' },
-  { x: 65,  y: 47, text: 'A retro pixel art editor' },
-  { x: 84,  y: 46, text: 'A workout log with progress graphs' },
-  { x: 95,  y: 49, text: 'A poll creator with live results' },
-  // row 6
-  { x: 6,   y: 60, text: 'A meeting scheduler with time zones' },
-  { x: 17,  y: 62, text: 'An invoice generator with PDF export' },
-  { x: 33,  y: 59, text: 'A Wordle-style word game' },
-  { x: 50,  y: 61, text: 'A git commit message generator' },
-  { x: 67,  y: 60, text: 'A Lichess opening explorer' },
-  { x: 83,  y: 59, text: 'A random meal planner' },
-  { x: 93,  y: 63, text: 'A QR code generator' },
-  // row 7
-  { x: 4,   y: 72, text: 'A color palette generator' },
-  { x: 22,  y: 74, text: 'A resume builder with templates' },
-  { x: 42,  y: 75, text: 'A GitHub stats dashboard' },
-  { x: 62,  y: 73, text: 'A countdown timer for events' },
-  { x: 80,  y: 75, text: 'A travel itinerary planner' },
-  { x: 94,  y: 72, text: 'A meme generator with captions' },
-  // row 8
-  { x: 7,   y: 83, text: 'A sorting algorithm visualizer' },
-  { x: 26,  y: 82, text: 'A word frequency counter' },
-  { x: 47,  y: 84, text: 'An expense splitter for groups' },
-  { x: 67,  y: 81, text: 'A CSS gradient generator' },
-  { x: 86,  y: 83, text: 'A dev portfolio with dark mode' },
-  // row 9
-  { x: 4,   y: 92, text: 'A Hacker News reader' },
-  { x: 23,  y: 93, text: 'A typing practice app' },
-  { x: 44,  y: 91, text: 'A music chord progression tool' },
-  { x: 64,  y: 94, text: 'A habit tracker with streaks' },
-  { x: 82,  y: 92, text: 'A pomodoro timer with history' },
-  { x: 95,  y: 90, text: 'A news reader with summaries' },
+  // row 1 — 3 items  (y ≥ 9 to clear the nav bar)
+  { x: 15, y: 9,  text: 'Mood tracker that auto-builds a Spotify playlist' },
+  { x: 50, y: 8,  text: 'Pokedex with type charts and evolution tree' },
+  { x: 83, y: 10, text: 'Pomodoro timer with ambient sound modes and stats' },
+
+  // row 2 — 4 items
+  { x: 12, y: 19, text: 'Habit tracker with streak view' },
+  { x: 35, y: 17, text: 'Markdown editor with live preview' },
+  { x: 58, y: 19, text: 'GitHub profile card generator' },
+  { x: 82, y: 17, text: 'Typing speed test with WPM score' },
+
+  // row 3 — 3 items
+  { x: 12, y: 28, text: 'Kanban board with drag-and-drop and local save' },
+  { x: 47, y: 26, text: 'Live trivia game with the Open Trivia Database' },
+  { x: 78, y: 28, text: 'Crypto watchlist with live prices via CoinGecko' },
+
+  // row 4 — 4 items
+  { x: 15, y: 37, text: 'Text-to-speech reader with ElevenLabs' },
+  { x: 38, y: 35, text: 'Random user profile card generator' },
+  { x: 62, y: 37, text: 'Flashcard flip app for any topic' },
+  { x: 86, y: 35, text: 'Rock paper scissors with win history' },
+
+  // row 5 — 3 items
+  { x: 18, y: 46, text: 'Budget tracker with category charts and history' },
+  { x: 53, y: 44, text: 'AI image generator that starts with your mood' },
+  { x: 84, y: 46, text: 'Pixel art canvas with color picker and undo stack' },
+
+  // row 6 — 4 items
+  { x: 11, y: 55, text: 'Invoice builder with Stripe payment link' },
+  { x: 33, y: 53, text: 'Color palette explorer from a mood' },
+  { x: 57, y: 55, text: 'AI meal planner with macros via OpenAI' },
+  { x: 80, y: 53, text: 'Stopwatch with split and lap time list' },
+
+  // row 7 — 3 items
+  { x: 10, y: 64, text: 'Dictionary with audio clips and example sentences' },
+  { x: 46, y: 62, text: 'Movie night picker with ratings from TMDB' },
+  { x: 78, y: 64, text: 'Breathing exercise with an animated circle guide' },
+
+  // row 8 — 4 items
+  { x: 14, y: 73, text: 'Dog breed identifier using a free image API' },
+  { x: 37, y: 71, text: 'Notes app saved to local storage' },
+  { x: 61, y: 73, text: 'Live chat room backed by Supabase Realtime' },
+  { x: 84, y: 71, text: 'Anime search and detail view with Jikan API' },
+
+  // row 9 — 3 items
+  { x: 20, y: 82, text: 'AI cover letter built from your job description' },
+  { x: 56, y: 80, text: 'Countdown timer that fires confetti on zero' },
+  { x: 85, y: 82, text: 'NASA photo of the day with facts and share link' },
+
+  // row 10 — 4 items
+  { x: 13, y: 91, text: 'Smart todo list with AI priority scoring' },
+  { x: 36, y: 89, text: 'Weather forecast for any city' },
+  { x: 60, y: 91, text: 'Binary and hex converter tool' },
+  { x: 83, y: 89, text: 'ASCII art generator from any text' },
 ]

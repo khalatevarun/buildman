@@ -1,7 +1,8 @@
-import { useDispatch } from 'react-redux'
+import { useCallback } from 'react'
 import { toast } from 'sonner'
 import {
   appendChatOutput,
+  addAssistantMessage,
   pushActivity,
   finalizeMessage,
   addCheckpoint,
@@ -9,15 +10,36 @@ import {
   addUserMessage,
   setEnvNeeded,
   setProjectName,
-  store,
+  clearQueue,
+  cancelLastExchange,
+  setPendingInput,
+  setAssistantFinalText,
+  useAppDispatch,
+  useAppSelector,
 } from '../store'
 import { api, API_URL } from '../utility/api'
 
-export function usePrompt(userId: string | null, projectId: string | null) {
-  const dispatch = useDispatch()
+function extractLastSentence(text: string): string {
+  const trimmed = text.trim()
+  if (!trimmed) return trimmed
+  const parts = trimmed.split(/(?<=[.!?])\s+/)
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const s = parts[i].trim()
+    if (s.length > 15) return s
+  }
+  return parts[parts.length - 1].trim()
+}
 
+export function usePrompt(userId: string | null, projectId: string | null) {
+  const dispatch = useAppDispatch()
+  // messages is read at call time (sendPrompt is not memoized), so this is always fresh
+  const messages = useAppSelector(s => s.app.messages)
+
+  // Not wrapped in useCallback — this function must close over fresh `messages` on every call.
+  // Callers that store it across renders (e.g. Workspace streaming effect) use a ref.
   const sendPrompt = async (text: string) => {
     if (!userId) return
+    const isFirstMessage = messages.filter(m => m.role === 'user').length === 0
     dispatch(addUserMessage(text))
     dispatch(setStreaming(true))
 
@@ -50,15 +72,19 @@ export function usePrompt(userId: string | null, projectId: string | null) {
     const decoder = new TextDecoder()
     const activities: string[] = []
     let gotDone = false
-    const isFirstMessage = store.getState().app.messages.filter(m => m.role === 'user').length === 1
     let nameParsed = !isFirstMessage
     let outputBuffer = ''
+    let fullOutput = ''
 
     const flushBuffer = () => {
       if (outputBuffer) {
         dispatch(appendChatOutput(outputBuffer))
         outputBuffer = ''
       }
+    }
+
+    const finishNameParsing = () => {
+      flushBuffer()
       nameParsed = true
     }
 
@@ -70,7 +96,11 @@ export function usePrompt(userId: string | null, projectId: string | null) {
       for (const line of lines) {
         try {
           const event = JSON.parse(line.slice(6))
+          if (event.type === 'new_turn') {
+            dispatch(addAssistantMessage())
+          }
           if (event.type === 'output') {
+            fullOutput += event.text
             if (!nameParsed) {
               outputBuffer += event.text
               const match = outputBuffer.match(/<name>(.*?)<\/name>/)
@@ -94,16 +124,31 @@ export function usePrompt(userId: string | null, projectId: string | null) {
             dispatch(pushActivity(event.text))
           }
           if (event.type === 'error') {
-            flushBuffer()
+            finishNameParsing()
             dispatch(appendChatOutput(`\n\n⚠️ ${event.text}`))
+          }
+          if (event.type === 'build_error') {
+            dispatch(appendChatOutput(`\n\n⚠️ The app has build errors — describe what you wanted and I'll fix it.`))
+          }
+          if (event.type === 'stopped') {
+            finishNameParsing()
+            dispatch(clearQueue())
+            dispatch(cancelLastExchange())
+            dispatch(setPendingInput(text))
+            dispatch(finalizeMessage([...activities]))
+            dispatch(setStreaming(false))
+            return
           }
           if (event.type === 'env_needed') dispatch(setEnvNeeded(event.vars))
           if (event.type === 'done') {
-            flushBuffer()
+            finishNameParsing()
             gotDone = true
+            const cleanedOutput = fullOutput.replace(/<name>.*?<\/name>\n?/g, '').trim()
+            const lastSentence = extractLastSentence(cleanedOutput)
+            if (lastSentence) dispatch(setAssistantFinalText(lastSentence))
             dispatch(finalizeMessage([...activities]))
             if (event.commitHash) {
-              dispatch(addCheckpoint({ hash: event.commitHash, timestamp: Date.now() }))
+              dispatch(addCheckpoint({ hash: event.commitHash, timestamp: Date.now(), buildBroken: event.buildStatus === 'broken' }))
             }
             dispatch(setStreaming(false))
           }
@@ -112,47 +157,21 @@ export function usePrompt(userId: string | null, projectId: string | null) {
     }
 
     if (!gotDone) {
-      flushBuffer()
+      finishNameParsing()
       dispatch(finalizeMessage([...activities]))
       dispatch(setStreaming(false))
     }
-
-    // Fire-and-forget: persist chat history to volume and check for Vite errors
-    if (projectId) {
-      const state = store.getState()
-      api.post(`/projects/${projectId}/chat`, {
-        user_id: userId,
-        messages: state.app.messages,
-        checkpoints: state.app.checkpoints,
-      }).catch(() => {})
-
-      // Check Vite for errors after Claude finishes
-      api.get(`/vite-logs?user_id=${userId}`).then(({ data }) => {
-        if (data.isEnvError) {
-          // Only show generic env prompt if env popup isn't already queued from the agent scan
-          const currentEnv = store.getState().app.envNeeded
-          if (!currentEnv?.length) {
-            dispatch(setEnvNeeded([{
-              name: 'VITE_API_KEY',
-              service: null,
-              url: null,
-              hint: 'The preview is returning auth errors — check your API key',
-            }]))
-          }
-        } else if (data.isCodeError && data.logs) {
-          // Auto-fix: send the error lines back to Claude without user action
-          const errorLines = data.logs
-            .split('\n')
-            .filter((l: string) => /error/i.test(l))
-            .slice(0, 5)
-            .join('\n')
-          if (errorLines.trim()) {
-            sendPrompt(`The preview is showing an error. Fix it:\n\n${errorLines}`)
-          }
-        }
-      }).catch(() => {})
-    }
   }
 
-  return { sendPrompt }
+  // Chat persistence is handled by a useEffect in Workspace that watches streaming→false,
+  // where it reads fully-updated messages/checkpoints from the triggering render.
+
+  const stopPrompt = useCallback(async () => {
+    if (!userId) return
+    try {
+      await api.post('/stop', { user_id: userId })
+    } catch { /* best effort */ }
+  }, [userId])
+
+  return { sendPrompt, stopPrompt }
 }

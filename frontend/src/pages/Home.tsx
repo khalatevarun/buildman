@@ -2,25 +2,23 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from '@clerk/clerk-react'
 import { useSandbox } from '../hooks/useSandbox'
+import { BuildmanSpinner } from '../components/BuildmanSpinner'
 import { SCATTERED } from '../data/prompts'
 
 export function Home() {
   const { user } = useUser()
   const navigate = useNavigate()
-  const { createProject, status, phase, prewarm, cancelPrewarm } = useSandbox(user?.id ?? null)
+  const { createProject, status, phase } = useSandbox(user?.id ?? null)
   const [prompt, setPrompt] = useState('')
   const [focused, setFocused] = useState(false)
   const [mousePos, setMousePos] = useState({ x: -9999, y: -9999 })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const hoveringInput = useRef(false)
 
   useEffect(() => {
-    if (!user?.id) return
-    prewarm()
-    return () => { cancelPrewarm() }
-  }, [user?.id])
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => setMousePos({ x: e.clientX, y: e.clientY })
+    const onMove = (e: MouseEvent) => {
+      if (!hoveringInput.current) setMousePos({ x: e.clientX, y: e.clientY })
+    }
     window.addEventListener('mousemove', onMove)
     return () => window.removeEventListener('mousemove', onMove)
   }, [])
@@ -39,29 +37,35 @@ export function Home() {
       <div
         className="absolute inset-0 z-0"
         style={{
-          WebkitMaskImage: `radial-gradient(circle 260px at ${mousePos.x}px ${mousePos.y}px, black 50%, transparent 90%)`,
-          maskImage: `radial-gradient(circle 260px at ${mousePos.x}px ${mousePos.y}px, black 50%, transparent 90%)`,
+          WebkitMaskImage: `radial-gradient(circle 300px at ${mousePos.x}px ${mousePos.y}px, black 65%, transparent 95%)`,
+          maskImage: `radial-gradient(circle 300px at ${mousePos.x}px ${mousePos.y}px, black 65%, transparent 95%)`,
         }}
       >
-        {SCATTERED.map((item, i) => (
-          <button
-            key={i}
-            onClick={() => { setPrompt(item.text); textareaRef.current?.focus() }}
-            className="absolute text-xs text-foreground/80 whitespace-nowrap px-3 py-1.5 rounded-xl border border-border/70 bg-card hover:text-foreground hover:border-border transition-colors duration-100 cursor-pointer"
-            style={{ left: `${item.x}%`, top: `${item.y}%`, transform: 'translateX(-50%)' }}
-          >
-            {item.text}
-          </button>
-        ))}
+        {SCATTERED.map((item, i) => {
+          // All items are centred on their x position.
+          // Items near the right edge (x > 88) are right-anchored to avoid clipping.
+          const transform = item.x > 88 ? 'translateX(-100%)' : 'translateX(-50%)'
+          return (
+            <button
+              key={i}
+              onClick={() => { setPrompt(item.text); textareaRef.current?.focus() }}
+              className="absolute text-xs text-foreground/80 whitespace-nowrap px-3 py-1.5 rounded-xl border border-border/70 bg-card hover:text-foreground hover:border-border transition-colors duration-100 cursor-pointer"
+              style={{ left: `${item.x}%`, top: `${item.y}%`, transform }}
+            >
+              {item.text}
+            </button>
+          )
+        })}
       </div>
 
-      {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-6 py-4">
+      {/* Nav — pointer-events-none on the nav itself so scattered buttons behind it stay clickable;
+           individual interactive elements re-enable pointer events as needed */}
+      <nav className="relative z-10 flex items-center justify-between px-6 py-4 pointer-events-none">
         <span className="text-sm font-semibold tracking-tight text-muted-foreground font-heading">
           Buildman
         </span>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 pointer-events-auto">
           <SignedOut>
             <SignInButton>
               <button className="text-xs px-3 py-1.5 rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-150">
@@ -72,10 +76,10 @@ export function Home() {
 
           <SignedIn>
             <Link
-              to="/projects"
+              to="/apps"
               className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-border/60 transition-colors duration-150 no-underline"
             >
-              Projects
+              Apps
             </Link>
             <UserButton />
           </SignedIn>
@@ -91,7 +95,11 @@ export function Home() {
           Turn any idea into<br />a live app
         </h1>
 
-        <div className="w-full max-w-[520px] pointer-events-auto">
+        <div
+          className="w-full max-w-[520px] pointer-events-auto"
+          onMouseEnter={() => { hoveringInput.current = true; setMousePos({ x: -9999, y: -9999 }) }}
+          onMouseLeave={() => { hoveringInput.current = false }}
+        >
           <div
             className={`relative rounded-2xl overflow-hidden transition-all duration-200 bg-card border ${focused ? 'border-border/60 ring-2 ring-ring/20' : 'border-border'}`}
           >
@@ -122,10 +130,7 @@ export function Home() {
                 className={`flex items-center justify-center w-8 h-8 rounded-xl transition-all duration-150 disabled:cursor-not-allowed ${prompt.trim() && !isLoading ? 'bg-primary text-primary-foreground hover:brightness-110' : 'bg-muted text-muted-foreground'}`}
               >
                 {isLoading ? (
-                  <span
-                    className="w-3.5 h-3.5 rounded-full border-[1.5px] border-primary-foreground/30 border-t-transparent"
-                    style={{ animation: 'spin 0.7s linear infinite' }}
-                  />
+                  <BuildmanSpinner size={14} className="text-muted-foreground" />
                 ) : (
                   <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
                     <path
