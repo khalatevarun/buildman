@@ -80,8 +80,6 @@ export function useSandbox(userId: string | null, getToken: (() => Promise<strin
     throw new Error('Project creation stream ended without a done event')
   }
 
-  // Ensures the sandbox is ready for a given project. Used by Workspace on mount.
-  // Returns deployed state + any pending env vars so the caller can sync to Redux.
   const ensureSandbox = async (projectId: string): Promise<EnsureResult> => {
     try {
       const { data } = await api.get<SandboxStatusResponse>(`/sandbox/status?user_id=${userId}`)

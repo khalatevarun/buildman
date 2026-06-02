@@ -267,7 +267,6 @@ export function Workspace() {
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left panel — Chat */}
         {!isExpanded && (
           <div
             ref={chatPanelRef}
@@ -278,7 +277,6 @@ export function Workspace() {
           </div>
         )}
 
-        {/* Drag handle */}
         {!isExpanded && (
           <div
             onMouseDown={onDividerMouseDown}
@@ -293,7 +291,6 @@ export function Workspace() {
           </div>
         )}
 
-        {/* Right panel — Preview */}
         <div className="flex-1 bg-background min-w-0 relative">
           <PreviewPane
             previewUrl={previewUrl}

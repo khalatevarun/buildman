@@ -61,7 +61,6 @@ function writeSse(res, payload) {
   res.write(`data: ${JSON.stringify(payload)}\n\n`)
 }
 
-// Map OpenCode tool names (from packages/opencode/src/tool/) to human-readable labels
 function formatToolLabel(toolName, input) {
   const n = String(toolName || '').toLowerCase()
   if (n === 'bash') {
@@ -183,10 +182,6 @@ async function ensureGitRepo() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// OpenCode server management
-// ---------------------------------------------------------------------------
-
 function writeOpencodeConfig() {
   const configDir = '/home/buildman/.config/opencode'
   fs.mkdirSync(configDir, { recursive: true })
@@ -254,8 +249,6 @@ async function waitForOpencode(maxRetries = 30) {
   throw new Error('OpenCode server failed to start within 30s')
 }
 
-// Connect to GET /event and fan out to registered listeners.
-// Reconnects automatically on disconnect.
 function connectOpencodeEvents() {
   const tryConnect = () => {
     const req = http.request(
@@ -310,10 +303,6 @@ async function ensureOpencodeSession() {
   return opencodeSessionId
 }
 
-// ---------------------------------------------------------------------------
-// Routes
-// ---------------------------------------------------------------------------
-
 app.post('/init-workspace', async (req, res) => {
   try {
     fs.mkdirSync(WORKSPACE, { recursive: true })
@@ -356,7 +345,6 @@ app.post('/init-workspace', async (req, res) => {
     ensureNodeModules()
     spawnVite()
 
-    // Start OpenCode server and connect event stream
     startOpencodeServer()
     try {
       await waitForOpencode()

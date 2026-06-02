@@ -302,10 +302,6 @@ class OpenProjectRequest(BaseModel):
     user_id: str | None = None
 
 
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
-
 @app.get("/projects")
 async def list_projects(user_id: str = Depends(get_current_user_id)):
     projects = await project_list_store.get.aio(user_id) or []
