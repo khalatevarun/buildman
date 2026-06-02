@@ -14,7 +14,7 @@ from sandbox_embedded import (  # noqa: E402
 
 _EMBED_FILE = Path(__file__).parent / "sandbox_embedded.py"
 
-app = modal.App("buildman-v3")
+app = modal.App("buildman")
 
 # Netlify deploy token — create with: modal secret create netlify-credentials NETLIFY_AUTH_TOKEN=<token>
 try:
@@ -65,7 +65,7 @@ backend_image = (
     timeout=1800,
 )
 @modal.asgi_app()
-def fastapi_app():
+def api():
     from backend.api.main import app as _app
     return _app
 
@@ -80,17 +80,17 @@ POOL_SANDBOX_TIMEOUT = 3600       # 1 h — matches existing sandbox timeout
 POOL_MIN_REMAINING_SECS = 5 * 60  # discard pool entry if < 5 min left on its clock
 
 # Queue stores plain dicts: {sandbox_id, agent_url, preview_url, expires_at}
-sandbox_pool_queue = modal.Queue.from_name("buildman-sandbox-pool", create_if_missing=True)
+sandbox_pool_queue = modal.Queue.from_name("buildman-pool", create_if_missing=True)
 
 
 @app.function(image=backend_image, retries=2)
-def add_sandbox_to_pool() -> None:
+def spawn_sandbox() -> None:
     """Create one pre-warmed sandbox and push it onto the pool queue."""
     import httpx
 
     # Sandboxes live in a separate app so they don't pollute the control-plane logs.
     # Pattern from Modal's official sandbox_pool.py example.
-    sandbox_app = modal.App.lookup("buildman-sandbox-pool-sandboxes", create_if_missing=True)
+    sandbox_app = modal.App.lookup("buildman-sandboxes", create_if_missing=True)
     secrets = [s for s in [netlify_secret] if s is not None]
 
     sb = modal.Sandbox.create(
@@ -135,7 +135,7 @@ def add_sandbox_to_pool() -> None:
 
 
 @app.function(image=backend_image, schedule=modal.Period(minutes=5))
-def maintain_sandbox_pool() -> None:
+def pool_scheduler() -> None:
     """Drain expired/unhealthy pool entries and top up to POOL_SIZE.
 
     Runs every 5 minutes. Pattern from Modal's official sandbox_pool.py example.
@@ -175,6 +175,6 @@ def maintain_sandbox_pool() -> None:
     # Top up to target size
     needed = POOL_SIZE - len(valid)
     for _ in range(max(0, needed)):
-        add_sandbox_to_pool.spawn()
+        spawn_sandbox.spawn()
 
     print(f"Pool maintenance: {len(valid)} healthy, spawning {max(0, needed)} new")
