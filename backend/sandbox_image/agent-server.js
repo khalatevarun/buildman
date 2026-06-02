@@ -23,10 +23,15 @@ const OC_PROVIDER = 'opencode'
 const OC_MODEL = 'deepseek-v4-flash-free'
 
 function spawnVite() {
+  const logDir = path.join(WORKSPACE, 'tmp')
+  fs.mkdirSync(logDir, { recursive: true })
+  const logStream = fs.createWriteStream(path.join(logDir, 'vite.log'), { flags: 'a' })
   const proc = spawn('npm', ['run', 'dev', '--', '--host', '0.0.0.0', '--port', '5173'], {
     cwd: WORKSPACE,
-    stdio: ['ignore', 'ignore', 'ignore'],
+    stdio: ['ignore', 'pipe', 'pipe'],
   })
+  proc.stdout.pipe(logStream)
+  proc.stderr.pipe(logStream)
   proc.unref()
 }
 
@@ -88,6 +93,13 @@ function deriveService(varName) {
   return segment.charAt(0) + segment.slice(1).toLowerCase()
 }
 
+const PLACEHOLDER_RE = /^(your[-_\s].*|placeholder|todo|xxx+|<[^>]+>|api[-_]key[-_]here|add[-_]your.*|insert[-_].*|replace[-_].*|enter[-_].*|my[-_].*key.*)$/i
+
+function isPlaceholderValue(val) {
+  const v = val.trim()
+  return v === '' || v === '""' || v === "''" || PLACEHOLDER_RE.test(v)
+}
+
 function scanEnvPlaceholders() {
   const envPath = path.join(WORKSPACE, '.env')
   if (!fs.existsSync(envPath)) return []
@@ -113,8 +125,8 @@ function scanEnvPlaceholders() {
       pendingUrl = trimmed.slice(2).trim()
       continue
     }
-    const match = trimmed.match(/^([A-Z_][A-Z0-9_]*)=\s*$/)
-    if (match) {
+    const match = trimmed.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/)
+    if (match && isPlaceholderValue(match[2])) {
       if (currentVars.length === 0) currentUrl = pendingUrl
       currentVars.push(match[1])
       continue
@@ -132,6 +144,10 @@ app.get('/healthz', async (_, res) => {
     ocHealthy = r.ok
   } catch {}
   res.json({ ok: true, opencode_healthy: ocHealthy, session_id: opencodeSessionId })
+})
+
+app.get('/env-status', (_, res) => {
+  res.json({ env_needed: scanEnvPlaceholders() })
 })
 
 function ensureNodeModules() {
@@ -196,6 +212,7 @@ After completing any task, write your reply following these rules exactly.
 - NEVER begin with: "All done", "Done", "No errors", "No type errors", "No TypeScript errors", "I've", "I have", "Let me", "Now I", "I will"
 - NEVER mention TypeScript, type errors, or results of any checks you ran internally
 - NEVER mention file names, component names, CSS classes, JSX, or any technical term
+- NEVER mention environment variable names (like VITE_API_KEY or OPENAI_API_KEY) or configuration files (like .env) — the UI handles prompting the user for any keys they need
 - Write as if describing the finished result to a friend who has never written code
 `
   fs.writeFileSync(path.join(configDir, 'AGENTS.md'), globalAgentsMd)
@@ -488,6 +505,18 @@ app.post('/prompt', async (req, res) => {
       return
     }
 
+    // Passive build check — if agent followed AGENTS.md this should already pass
+    let buildPassed = false
+    let buildErrors = ''
+    try {
+      await execAsync('npm run build', { cwd: WORKSPACE, timeout: 90000 })
+      buildPassed = true
+    } catch (e) {
+      buildErrors = [e.stdout, e.stderr].filter(Boolean).join('\n')
+        .split('\n').filter(l => l.trim()).slice(-30).join('\n')
+      console.error('[build-check] failed:', buildErrors.slice(0, 500))
+    }
+
     let commitHash = null
     try {
       await ensureGitRepo()
@@ -498,12 +527,18 @@ app.post('/prompt', async (req, res) => {
 
     await saveBundle()
 
+    if (!buildPassed && buildErrors) {
+      writeSse(res, { type: 'build_error', text: buildErrors })
+    }
+
+    // env_needed must fire BEFORE done so the frontend dispatches setEnvNeeded
+    // before streaming flips to false and the card renders correctly.
     const envNeeded = scanEnvPlaceholders()
     if (envNeeded.length > 0) {
       writeSse(res, { type: 'env_needed', vars: envNeeded })
     }
 
-    writeSse(res, { type: 'done', code: 0, sessionId, commitHash })
+    writeSse(res, { type: 'done', code: 0, sessionId, commitHash, buildStatus: buildPassed ? 'ok' : 'broken', envNeeded: envNeeded.length > 0 ? envNeeded : undefined })
     res.end()
     activePromptRes = null
   }
