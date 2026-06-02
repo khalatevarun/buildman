@@ -15,6 +15,7 @@ interface ChatMessage {
 interface CheckpointEntry {
   hash: string
   timestamp: number
+  buildBroken?: boolean
 }
 
 export interface EnvVarGroup {
@@ -82,7 +83,7 @@ const appSlice = createSlice({
       }
       state.liveActivity = []
     },
-    addCheckpoint(state, action: PayloadAction<{ hash: string; timestamp: number }>) {
+    addCheckpoint(state, action: PayloadAction<{ hash: string; timestamp: number; buildBroken?: boolean }>) {
       state.checkpoints.push(action.payload)
     },
     setPreviewingHash(state, action: PayloadAction<string | null>) {

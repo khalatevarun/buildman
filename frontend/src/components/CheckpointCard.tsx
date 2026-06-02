@@ -9,13 +9,14 @@ interface Props {
   totalVersions: number
   isDeployed: boolean
   publishing: boolean
+  buildBroken?: boolean
   onPreview: (hash: string) => void
   onRestore: (hash: string) => void
   onDeploy: (hash: string) => Promise<string>
 }
 
 
-export function CheckpointCard({ hash, timestamp, versionNumber, totalVersions, isDeployed, publishing, onPreview, onRestore, onDeploy }: Props) {
+export function CheckpointCard({ hash, timestamp, versionNumber, totalVersions, isDeployed, publishing, buildBroken, onPreview, onRestore, onDeploy }: Props) {
   const [loading, setLoading] = useState<'preview' | 'restore' | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
@@ -64,6 +65,12 @@ export function CheckpointCard({ hash, timestamp, versionNumber, totalVersions, 
         {live && (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary/70" style={{ letterSpacing: '0.04em' }}>
             LIVE
+          </span>
+        )}
+
+        {buildBroken && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-500/70" style={{ letterSpacing: '0.04em' }}>
+            BUILD BROKEN
           </span>
         )}
 

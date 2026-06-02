@@ -87,7 +87,7 @@ export function ActivityTicker({ items, streaming }: Props) {
               return (
                 <div
                   key={i}
-                  className={`flex items-center gap-1.5 text-[11px] font-mono leading-5 ${isLatest ? 'text-foreground/50' : 'text-foreground/22'}`}
+                  className={`flex items-center gap-1.5 text-[11px] font-mono leading-5 ${isLatest && streaming ? 'text-foreground/50' : 'text-foreground/22'}`}
                 >
                   <Icon size={11} weight="regular" className="shrink-0 mt-px" />
                   <span className="truncate">{item}</span>

@@ -127,6 +127,9 @@ export function usePrompt(userId: string | null, projectId: string | null) {
             finishNameParsing()
             dispatch(appendChatOutput(`\n\n⚠️ ${event.text}`))
           }
+          if (event.type === 'build_error') {
+            dispatch(appendChatOutput(`\n\n⚠️ The app has build errors — describe what you wanted and I'll fix it.`))
+          }
           if (event.type === 'stopped') {
             finishNameParsing()
             dispatch(clearQueue())
@@ -140,11 +143,12 @@ export function usePrompt(userId: string | null, projectId: string | null) {
           if (event.type === 'done') {
             finishNameParsing()
             gotDone = true
-            const lastSentence = extractLastSentence(fullOutput)
+            const cleanedOutput = fullOutput.replace(/<name>.*?<\/name>\n?/g, '').trim()
+            const lastSentence = extractLastSentence(cleanedOutput)
             if (lastSentence) dispatch(setAssistantFinalText(lastSentence))
             dispatch(finalizeMessage([...activities]))
             if (event.commitHash) {
-              dispatch(addCheckpoint({ hash: event.commitHash, timestamp: Date.now() }))
+              dispatch(addCheckpoint({ hash: event.commitHash, timestamp: Date.now(), buildBroken: event.buildStatus === 'broken' }))
             }
             dispatch(setStreaming(false))
           }

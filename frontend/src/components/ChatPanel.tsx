@@ -219,6 +219,7 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
                   totalVersions={checkpoints.length}
                   isDeployed={checkpoint.hash === deployedHash}
                   publishing={publishingHash === checkpoint.hash}
+                  buildBroken={checkpoint.buildBroken}
                   onPreview={handlePreview}
                   onRestore={handleRestore}
                   onDeploy={onDeploy}
