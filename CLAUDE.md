@@ -35,7 +35,7 @@ uvicorn backend.main:app --port 8000
 # After editing agent-server.js or starter/*, rebuild sandbox_embedded.py first:
 python3 -c "
 import base64, subprocess
-result = subprocess.run(['tar','-czf','-','-C','backend/sandbox_image/starter','.'], capture_output=True)
+result = subprocess.run(['tar','-czf','-','--exclude=./node_modules','-C','backend/sandbox_image/starter','.'], capture_output=True)
 starter_b64 = base64.b64encode(result.stdout).decode()
 with open('backend/sandbox_image/agent-server.js','rb') as f: agent_b64 = base64.b64encode(f.read()).decode()
 with open('backend/sandbox_image/package.json','rb') as f: pkg_b64 = base64.b64encode(f.read()).decode()
