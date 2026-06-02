@@ -66,7 +66,7 @@ backend_image = (
 )
 @modal.asgi_app()
 def fastapi_app():
-    from backend.main import app as _app
+    from backend.api.main import app as _app
     return _app
 
 

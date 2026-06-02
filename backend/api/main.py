@@ -92,7 +92,7 @@ _SSE_HEADERS = {
 
 
 def _modal_app_dir() -> str:
-    return os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    return os.path.dirname(os.path.dirname(__file__))
 
 
 def _create_sandbox(project_id: str, user_id: str) -> dict:
