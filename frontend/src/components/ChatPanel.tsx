@@ -141,7 +141,6 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Nav header */}
       <div className="flex items-center justify-between px-4 h-10 shrink-0 border-b border-border">
         <Link
           to="/apps"
@@ -156,7 +155,6 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
         </span>
         <div className="w-[10px]" />
       </div>
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto py-5 space-y-5" style={{ scrollbarWidth: 'none' }}>
         {messages.map((m, i) => {
           if (m.role === 'user') {
@@ -251,13 +249,11 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
         <div ref={bottomRef} />
       </div>
 
-      {/* Gradient fade into input */}
       <div
         className="pointer-events-none h-10 shrink-0 bg-gradient-to-b from-transparent to-background"
         style={{ marginTop: -40 }}
       />
 
-      {/* Input area */}
       <div className="px-3 pb-3 pt-1">
         {previewingHash && (
           <p className="mb-2 text-[11px] text-muted-foreground/50 text-center tracking-wide">
@@ -265,7 +261,6 @@ export function ChatPanel({ onSend, onStop, userId, publishingHash, onDeploy, pr
           </p>
         )}
 
-        {/* Queued prompts */}
         {promptQueue.length > 0 && !previewingHash && (
           <div className="mb-1.5 flex flex-col gap-1">
             {promptQueue.map((item, i) => (
