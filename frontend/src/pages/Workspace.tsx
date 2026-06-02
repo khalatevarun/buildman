@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useLocation } from 'react-router-dom'
-import { useUser } from '@clerk/clerk-react'
+import { useUser, useAuth } from '@clerk/clerk-react'
 import { toast } from 'sonner'
 import { useSandbox } from '../hooks/useSandbox'
 import { usePrompt } from '../hooks/usePrompt'
@@ -26,6 +26,7 @@ export function Workspace() {
   const { projectId } = useParams<{ projectId: string }>()
   const location = useLocation()
   const { user } = useUser()
+  const { getToken } = useAuth()
   const userId = user?.id ?? null
   const dispatch = useAppDispatch()
   const previewingHash = useAppSelector(s => s.app.previewingHash)
@@ -36,8 +37,8 @@ export function Workspace() {
   const promptQueue = useAppSelector(s => s.app.promptQueue)
   const messages = useAppSelector(s => s.app.messages)
 
-  const { previewUrl, ensureSandbox } = useSandbox(userId)
-  const { sendPrompt, stopPrompt } = usePrompt(userId, projectId ?? null)
+  const { previewUrl, ensureSandbox } = useSandbox(userId, getToken)
+  const { sendPrompt, stopPrompt } = usePrompt(userId, projectId ?? null, getToken)
 
   // sendPrompt is not memoized — it must close over fresh state on each call.
   // Store it in a ref so the streaming effect always calls the latest version.

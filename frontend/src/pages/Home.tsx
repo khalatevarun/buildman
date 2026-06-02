@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from '@clerk/clerk-react'
+import { SignedIn, SignedOut, SignInButton, UserButton, useUser, useAuth } from '@clerk/clerk-react'
 import { useSandbox } from '../hooks/useSandbox'
 import { BuildmanSpinner } from '../components/BuildmanSpinner'
 import { SCATTERED } from '../data/prompts'
 
 export function Home() {
   const { user } = useUser()
+  const { getToken } = useAuth()
   const navigate = useNavigate()
-  const { createProject, status, phase } = useSandbox(user?.id ?? null)
+  const { createProject, status, phase } = useSandbox(user?.id ?? null, getToken)
   const [prompt, setPrompt] = useState('')
   const [focused, setFocused] = useState(false)
   const [mousePos, setMousePos] = useState({ x: -9999, y: -9999 })

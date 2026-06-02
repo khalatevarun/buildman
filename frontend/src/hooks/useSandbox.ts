@@ -44,10 +44,15 @@ async function* readSSE(response: Response) {
   }
 }
 
-export function useSandbox(userId: string | null) {
+export function useSandbox(userId: string | null, getToken: (() => Promise<string | null>) | null) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [status, setStatus] = useState<SandboxStatus>('idle')
   const [phase, setPhase] = useState<string | null>(null)
+
+  const authHeaders = async (): Promise<Record<string, string>> => {
+    const token = await getToken?.()
+    return token ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } : { 'Content-Type': 'application/json' }
+  }
 
   const createProject = async (name: string): Promise<string> => {
     setStatus('creating')
@@ -55,7 +60,7 @@ export function useSandbox(userId: string | null) {
 
     const response = await fetch(`${API_URL}/projects`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ user_id: userId, project_name: name }),
     })
     for await (const event of readSSE(response)) {
@@ -94,7 +99,7 @@ export function useSandbox(userId: string | null) {
     setStatus('creating')
     const response = await fetch(`${API_URL}/projects/${projectId}/open`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ user_id: userId }),
     })
     for await (const event of readSSE(response) as AsyncGenerator<SandboxDoneEvent | { type: string; text?: string }>) {
