@@ -10,6 +10,7 @@ import {
   restoreHistory,
   setDeployedHash,
   setDeployedUrl,
+  setEnvNeeded,
   setProjectName,
   dequeuePrompt,
   useAppDispatch,
@@ -104,7 +105,7 @@ export function Workspace() {
     dispatch(resetWorkspace())
     let active = true
     const init = async () => {
-      let deployed: { deployedHash: string | null; deployedUrl: string | null }
+      let deployed: { deployedHash: string | null; deployedUrl: string | null; envNeeded: import('../store').EnvVarGroup[] }
       try {
         deployed = await ensureSandbox(projectId)
       } catch (err: any) {
@@ -118,6 +119,7 @@ export function Workspace() {
       if (!active) return
       dispatch(setDeployedHash(deployed.deployedHash))
       dispatch(setDeployedUrl(deployed.deployedUrl))
+      if (deployed.envNeeded.length > 0) dispatch(setEnvNeeded(deployed.envNeeded))
       // Fetch project name for existing projects (new projects get name from Claude's <name> tag)
       try {
         const { data } = await api.get<{ projects: { project_id: string; name: string }[] }>(`/projects?user_id=${userId}`)

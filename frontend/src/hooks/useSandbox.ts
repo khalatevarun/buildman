@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { api, API_URL } from '../utility/api'
+import type { EnvVarGroup } from '../store/index'
 
 export type SandboxStatus = 'idle' | 'creating' | 'ready'
 
@@ -9,6 +10,7 @@ interface SandboxStatusResponse {
   project_id?: string
   deployed_hash?: string | null
   deployed_url?: string | null
+  env_needed?: EnvVarGroup[]
 }
 
 interface SandboxDoneEvent {
@@ -22,6 +24,7 @@ interface SandboxDoneEvent {
 interface EnsureResult {
   deployedHash: string | null
   deployedUrl: string | null
+  envNeeded: EnvVarGroup[]
 }
 
 async function* readSSE(response: Response) {
@@ -73,14 +76,18 @@ export function useSandbox(userId: string | null) {
   }
 
   // Ensures the sandbox is ready for a given project. Used by Workspace on mount.
-  // Returns deployed state so the caller can sync it to Redux.
+  // Returns deployed state + any pending env vars so the caller can sync to Redux.
   const ensureSandbox = async (projectId: string): Promise<EnsureResult> => {
     try {
       const { data } = await api.get<SandboxStatusResponse>(`/sandbox/status?user_id=${userId}`)
       if (data.status === 'ready' && data.preview_url && data.project_id === projectId) {
         setPreviewUrl(data.preview_url)
         setStatus('ready')
-        return { deployedHash: data.deployed_hash ?? null, deployedUrl: data.deployed_url ?? null }
+        return {
+          deployedHash: data.deployed_hash ?? null,
+          deployedUrl: data.deployed_url ?? null,
+          envNeeded: data.env_needed ?? [],
+        }
       }
     } catch { /* network error — fall through to open */ }
 
@@ -97,7 +104,11 @@ export function useSandbox(userId: string | null) {
         setPreviewUrl(done.preview_url)
         setPhase(null)
         setStatus('ready')
-        return { deployedHash: done.deployed_hash ?? null, deployedUrl: done.deployed_url ?? null }
+        return {
+          deployedHash: done.deployed_hash ?? null,
+          deployedUrl: done.deployed_url ?? null,
+          envNeeded: [],
+        }
       }
       if (event.type === 'error') {
         setPhase(null)
@@ -105,7 +116,7 @@ export function useSandbox(userId: string | null) {
         throw new Error((event as { type: string; text: string }).text)
       }
     }
-    return { deployedHash: null, deployedUrl: null }
+    return { deployedHash: null, deployedUrl: null, envNeeded: [] }
   }
 
   const destroySandbox = () => {
