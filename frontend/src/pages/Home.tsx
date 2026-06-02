@@ -37,29 +37,35 @@ export function Home() {
       <div
         className="absolute inset-0 z-0"
         style={{
-          WebkitMaskImage: `radial-gradient(circle 260px at ${mousePos.x}px ${mousePos.y}px, black 50%, transparent 90%)`,
-          maskImage: `radial-gradient(circle 260px at ${mousePos.x}px ${mousePos.y}px, black 50%, transparent 90%)`,
+          WebkitMaskImage: `radial-gradient(circle 300px at ${mousePos.x}px ${mousePos.y}px, black 65%, transparent 95%)`,
+          maskImage: `radial-gradient(circle 300px at ${mousePos.x}px ${mousePos.y}px, black 65%, transparent 95%)`,
         }}
       >
-        {SCATTERED.map((item, i) => (
-          <button
-            key={i}
-            onClick={() => { setPrompt(item.text); textareaRef.current?.focus() }}
-            className="absolute text-xs text-foreground/80 whitespace-nowrap px-3 py-1.5 rounded-xl border border-border/70 bg-card hover:text-foreground hover:border-border transition-colors duration-100 cursor-pointer"
-            style={{ left: `${item.x}%`, top: `${item.y}%`, transform: 'translateX(-50%)' }}
-          >
-            {item.text}
-          </button>
-        ))}
+        {SCATTERED.map((item, i) => {
+          // All items are centred on their x position.
+          // Items near the right edge (x > 88) are right-anchored to avoid clipping.
+          const transform = item.x > 88 ? 'translateX(-100%)' : 'translateX(-50%)'
+          return (
+            <button
+              key={i}
+              onClick={() => { setPrompt(item.text); textareaRef.current?.focus() }}
+              className="absolute text-xs text-foreground/80 whitespace-nowrap px-3 py-1.5 rounded-xl border border-border/70 bg-card hover:text-foreground hover:border-border transition-colors duration-100 cursor-pointer"
+              style={{ left: `${item.x}%`, top: `${item.y}%`, transform }}
+            >
+              {item.text}
+            </button>
+          )
+        })}
       </div>
 
-      {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-6 py-4">
+      {/* Nav — pointer-events-none on the nav itself so scattered buttons behind it stay clickable;
+           individual interactive elements re-enable pointer events as needed */}
+      <nav className="relative z-10 flex items-center justify-between px-6 py-4 pointer-events-none">
         <span className="text-sm font-semibold tracking-tight text-muted-foreground font-heading">
           Buildman
         </span>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 pointer-events-auto">
           <SignedOut>
             <SignInButton>
               <button className="text-xs px-3 py-1.5 rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-150">
