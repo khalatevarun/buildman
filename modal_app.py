@@ -70,7 +70,7 @@ def fastapi_app():
 # https://github.com/modal-labs/modal-examples/blob/main/13_sandboxes/sandbox_pool.py
 # ---------------------------------------------------------------------------
 
-POOL_SIZE = 3
+POOL_SIZE = 2
 POOL_SANDBOX_TIMEOUT = 3600       # 1 h — matches existing sandbox timeout
 POOL_MIN_REMAINING_SECS = 5 * 60  # discard pool entry if < 5 min left on its clock
 
@@ -93,8 +93,8 @@ def add_sandbox_to_pool() -> None:
         app=sandbox_app,
         image=sandbox_image,
         secrets=secrets,
-        cpu=2.0,
-        memory=2048,
+        cpu=1.0,
+        memory=1024,
         timeout=POOL_SANDBOX_TIMEOUT,
         idle_timeout=900,
         encrypted_ports=[3001, 5173],
