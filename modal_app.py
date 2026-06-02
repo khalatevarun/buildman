@@ -22,6 +22,11 @@ try:
 except Exception:
     netlify_secret = None
 
+try:
+    clerk_secret = modal.Secret.from_name("clerk-credentials")
+except Exception:
+    clerk_secret = None
+
 
 sandbox_image = (
     modal.Image.debian_slim(python_version="3.12")
@@ -47,7 +52,7 @@ sandbox_image = (
 
 backend_image = (
     modal.Image.debian_slim(python_version="3.12")
-    .pip_install("fastapi", "httpx", "uvicorn", "pydantic", "modal")
+    .pip_install("fastapi", "httpx", "uvicorn", "pydantic", "modal", "python-jose[cryptography]")
     .add_local_file(str(_EMBED_FILE), "/root/sandbox_embedded.py", copy=True)
     .add_local_python_source("backend")
 )
@@ -55,7 +60,7 @@ backend_image = (
 
 @app.function(
     image=backend_image,
-    secrets=[],
+    secrets=[s for s in [clerk_secret] if s is not None],
     min_containers=1,
     timeout=1800,
 )

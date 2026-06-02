@@ -30,7 +30,7 @@ function extractLastSentence(text: string): string {
   return parts[parts.length - 1].trim()
 }
 
-export function usePrompt(userId: string | null, projectId: string | null) {
+export function usePrompt(userId: string | null, projectId: string | null, getToken: (() => Promise<string | null>) | null) {
   const dispatch = useAppDispatch()
   // messages is read at call time (sendPrompt is not memoized), so this is always fresh
   const messages = useAppSelector(s => s.app.messages)
@@ -45,9 +45,12 @@ export function usePrompt(userId: string | null, projectId: string | null) {
 
     let response: Response
     try {
+      const token = await getToken?.()
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (token) headers['Authorization'] = `Bearer ${token}`
       response = await fetch(`${API_URL}/prompt`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ user_id: userId, text }),
       })
     } catch (err) {
