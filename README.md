@@ -1,8 +1,19 @@
-# Buildman
+<div align="center">
+  <img src="docs/logos/buildman.svg" alt="Buildman" width="80" />
+  <h1>Buildman</h1>
+  <p>Yet another AI app builder.</p>
+  <p>Describe what you want. Watch it get built live in a real cloud VM. Deploy to Netlify in one click.</p>
 
-Yet another AI app builder.
+  <br />
 
-Describe what you want. Watch it get built live in a real cloud VM. Deploy to Netlify in one click.
+  <p>
+    <img src="docs/logos/modal.png" alt="Modal" height="36" style="margin: 0 12px" />
+    &nbsp;&nbsp;&nbsp;
+    <img src="docs/logos/opencode.png" alt="opencode-ai" height="36" style="margin: 0 12px" />
+    &nbsp;&nbsp;&nbsp;
+    <img src="docs/logos/netlify.png" alt="Netlify" height="36" style="margin: 0 12px" />
+  </p>
+</div>
 
 ---
 
@@ -13,7 +24,7 @@ Describe what you want. Watch it get built live in a real cloud VM. Deploy to Ne
 - **Git checkpoints** — every prompt produces a commit; jump back to any version
 - **One-click deploy** — ships directly to a dedicated Netlify site per project
 - **Persistent workspaces** — projects survive sandbox restarts via Modal filesystem snapshots
-- **Sandbox prewarm** — a VM is provisioned in the background on sign-in so your first build starts fast
+- **Sandbox pool** — a pool of 2 pre-warmed VMs is maintained by a scheduled job every 5 minutes, so new projects start instantly
 - **Starter template** — every project begins from a production-ready React + Vite + Tailwind base
 
 ---
