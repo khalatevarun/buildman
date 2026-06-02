@@ -50,7 +50,7 @@ Copy `frontend/.env.example` → `frontend/.env` and fill in:
 - `VITE_CLERK_PUBLISHABLE_KEY` — Clerk publishable key
 - `VITE_API_URL` — Backend URL (Modal deploy URL or `http://localhost:8000` for local)
 
-Modal secrets required: `claude-credentials` containing `CLAUDE_CODE_OAUTH_TOKEN`.
+Modal secrets required: `netlify-credentials` containing `NETLIFY_AUTH_TOKEN`, and `clerk-credentials` containing `CLERK_JWKS_URL`.
 
 ## Architecture
 
@@ -119,11 +119,10 @@ Project metadata stored in `modal.Dict("buildman-project-list")`, keyed by `user
 ### Agent Server (`backend/sandbox_image/agent-server.js`)
 
 The control plane inside each sandbox. Key behaviors:
-- Claude runs as user `buildman` (uid 1000) to avoid root permission issues
-- Session continuity: Claude's `--resume <sessionId>` flag persists conversation across prompts; session ID stored at `/workspace/.claude-session-id`
+- Opencode-ai runs as user `buildman` (uid 1000) to avoid root permission issues
+- Session continuity: session ID persists conversation across prompts; stored at `/workspace/.claude-session-id`
 - After each `/prompt` completes, makes a `git commit` checkpoint; hash returned in `{ type: "done", commitHash }`
 - `/deploy`: accepts optional `hash`; if given, stashes dirty state, checks out that hash, builds + deploys to Netlify, then restores to `main` in a `finally` block. Returns `{ ok, url, deployedHash }`
-- Auth priority: `ANTHROPIC_API_KEY` → `CLAUDE_CODE_OAUTH_TOKEN` → `CLAUDE_CONFIG_DIR/.credentials.json`
 
 ### Persistence
 
@@ -136,7 +135,7 @@ Auto-generated file — do not edit manually. Contains base64-encoded `agent-ser
 ### Modal App (`backend/modal_app.py`)
 
 Defines two images:
-- `sandbox_image` — the per-user VM image (Debian + Node 20 + Claude Code + Netlify CLI + pre-installed starter)
+- `sandbox_image` — the per-user VM image (Debian + Node 20 + Opencode-ai + Netlify CLI + pre-installed starter)
 - `backend_image` — the FastAPI host image (Python + FastAPI + httpx + modal)
 
 The FastAPI function runs with `min_containers=1` (always-warm) and `timeout=1800` to handle long Claude codegen sessions.
