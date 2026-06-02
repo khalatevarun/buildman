@@ -11,3 +11,6 @@ frontend/dist/
 .cursor/
 .playwright-mcp/
 thoughts/
+.pytest_cache/
+REBUILD_PLAN.md
+SANDBOX_SPEEDUP_PLAN.md

@@ -1,13 +1,5 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## What This Is
-
-Buildman v2 is an AI-powered web app builder. Users describe what they want, Claude Code runs inside a Modal cloud sandbox, edits a live Vite + React project, and the user sees changes streamed in real time via a preview iframe. This version replaces the v1 WebContainer approach — there is no in-browser runtime; execution happens in Modal VMs.
-
-Read `ARCHITECTURE.md` for the full system diagram and request flow.
-
 ## Deployment Rule — ALWAYS follow this after any backend change
 
 **Any change to `backend/main.py`, `backend/sandbox_image/agent-server.js`, `backend/sandbox_image/package.json`, or `backend/sandbox_image/starter/*` MUST be deployed to Modal before the work is considered done.**
