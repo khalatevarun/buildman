@@ -76,19 +76,12 @@ export function usePrompt(userId: string | null, projectId: string | null, getTo
     const activities: string[] = []
     let gotDone = false
     let nameParsed = !isFirstMessage
-    let outputBuffer = ''
+    let nameSearchBuffer = ''  // accumulates text only for <name> tag detection
     let fullOutput = ''
 
-    const flushBuffer = () => {
-      if (outputBuffer) {
-        dispatch(appendChatOutput(outputBuffer))
-        outputBuffer = ''
-      }
-    }
-
     const finishNameParsing = () => {
-      flushBuffer()
       nameParsed = true
+      nameSearchBuffer = ''
     }
 
     while (true) {
@@ -105,19 +98,20 @@ export function usePrompt(userId: string | null, projectId: string | null, getTo
           if (event.type === 'output') {
             fullOutput += event.text
             if (!nameParsed) {
-              outputBuffer += event.text
-              const match = outputBuffer.match(/<name>(.*?)<\/name>/)
+              nameSearchBuffer += event.text
+              const match = nameSearchBuffer.match(/<name>(.*?)<\/name>/)
               if (match) {
                 nameParsed = true
+                nameSearchBuffer = ''
                 const aiName = match[1].trim()
                 dispatch(setProjectName(aiName))
                 if (projectId) {
                   api.patch(`/projects/${projectId}`, { user_id: userId, name: aiName }).catch(() => {})
                 }
-                const cleaned = outputBuffer.replace(/<name>.*?<\/name>\n?/, '').trim()
-                if (cleaned) dispatch(appendChatOutput(cleaned))
-                outputBuffer = ''
               }
+              // Always stream text immediately — strip <name> tag tokens so they don't appear in chat
+              const visible = event.text.replace(/<name>.*?<\/name>\n?/g, '').replace(/<\/?name>/g, '')
+              if (visible) dispatch(appendChatOutput(visible))
             } else {
               dispatch(appendChatOutput(event.text))
             }
