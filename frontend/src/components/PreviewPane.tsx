@@ -67,11 +67,30 @@ export function PreviewPane({ previewUrl, streaming, isExpanded, onToggleExpand,
   const [loadingWord, setLoadingWord] = useState('')
   const [rotatingWord, setRotatingWord] = useState(() => LOADING_WORDS[Math.floor(Math.random() * LOADING_WORDS.length)])
   const [viewport, setViewport] = useState<'desktop' | 'mobile'>('desktop')
+  const [urlPath, setUrlPath] = useState('/')
+  const [inputPath, setInputPath] = useState('/')
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
     if (streaming) setLoadingWord(LOADING_WORDS[Math.floor(Math.random() * LOADING_WORDS.length)])
   }, [streaming])
+
+  // Reset URL bar when preview URL changes (new project)
+  useEffect(() => { setUrlPath('/'); setInputPath('/') }, [previewUrl])
+
+  const navigateTo = (path: string) => {
+    if (!iframeRef.current || !previewUrl) return
+    const base = previewUrl.replace(/\/$/, '')
+    const clean = path.startsWith('/') ? path : '/' + path
+    iframeRef.current.src = base + clean
+    setUrlPath(clean)
+    setInputPath(clean)
+  }
+
+  const handleUrlSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    navigateTo(inputPath)
+  }
 
   useEffect(() => {
     if (previewUrl) return
@@ -145,7 +164,19 @@ export function PreviewPane({ previewUrl, streaming, isExpanded, onToggleExpand,
           <MobileIcon active={viewport === 'mobile'} />
         </button>
 
-        <div className="flex-1" />
+        {/* URL bar */}
+        <form onSubmit={handleUrlSubmit} className="flex-1 mx-2">
+          <div className="flex items-center h-6 px-2.5 rounded-md bg-muted border border-border text-xs text-muted-foreground font-mono">
+            <input
+              value={inputPath}
+              onChange={e => setInputPath(e.target.value)}
+              onBlur={() => setInputPath(urlPath)}
+              className="flex-1 bg-transparent outline-none text-foreground min-w-0"
+              spellCheck={false}
+              aria-label="Current page path"
+            />
+          </div>
+        </form>
 
         {/* Globe — published link */}
         {publishing ? (
