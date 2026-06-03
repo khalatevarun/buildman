@@ -310,7 +310,7 @@ async def create_project(req: CreateProjectRequest, user_id: str = Depends(get_c
     project_id = str(uuid.uuid4())[:8]
 
     async def stream():
-        yield _sse({"type": "phase", "text": "Provisioning sandbox…"})
+        yield _sse({"type": "phase", "text": "Building your workspace…"})
         try:
             info = await asyncio.to_thread(_claim_from_pool)
 
@@ -320,9 +320,9 @@ async def create_project(req: CreateProjectRequest, user_id: str = Depends(get_c
                 spawn_sandbox.spawn()
             else:
                 info = await asyncio.to_thread(_create_sandbox, project_id, user_id)
-                yield _sse({"type": "phase", "text": "Waiting for agent…"})
+                yield _sse({"type": "phase", "text": "Warming things up…"})
                 await _wait_for_sandbox(info["agent_url"])
-                yield _sse({"type": "phase", "text": "Preparing workspace…"})
+                yield _sse({"type": "phase", "text": "Laying the groundwork…"})
                 await _init_workspace(info["agent_url"])
 
             now = int(time.time())
@@ -388,7 +388,7 @@ async def open_project(project_id: str, req: OpenProjectRequest, user_id: str = 
         snapshot_id = project.get("snapshot_id") if project else None
 
         if snapshot_id:
-            yield _sse({"type": "phase", "text": "Restoring your workspace…"})
+            yield _sse({"type": "phase", "text": "Picking up where you left off…"})
             try:
                 info = await asyncio.to_thread(_restore_from_snapshot, snapshot_id)
                 await sessions.put.aio(user_id, {"project_id": project_id, **info})
@@ -396,7 +396,7 @@ async def open_project(project_id: str, req: OpenProjectRequest, user_id: str = 
                 yield _sse({"type": "phase", "text": "Waiting for agent…"})
                 await _wait_for_sandbox(info["agent_url"])
 
-                yield _sse({"type": "phase", "text": "Finishing restore…"})
+                yield _sse({"type": "phase", "text": "Almost there…"})
                 await _init_workspace(info["agent_url"])
 
                 await _touch_project(user_id, project_id)
@@ -406,7 +406,7 @@ async def open_project(project_id: str, req: OpenProjectRequest, user_id: str = 
             except Exception as e:
                 print(f"[restore] snapshot restore failed for project={project_id}: {e}")
 
-        yield _sse({"type": "phase", "text": "Starting sandbox…"})
+        yield _sse({"type": "phase", "text": "Building your workspace…"})
         try:
             info = await asyncio.to_thread(_create_sandbox, project_id, user_id)
             await sessions.put.aio(user_id, {"project_id": project_id, **info})
@@ -414,7 +414,7 @@ async def open_project(project_id: str, req: OpenProjectRequest, user_id: str = 
             yield _sse({"type": "phase", "text": "Waiting for agent…"})
             await _wait_for_sandbox(info["agent_url"])
 
-            yield _sse({"type": "phase", "text": "Restoring workspace…"})
+            yield _sse({"type": "phase", "text": "Laying the groundwork…"})
             await _init_workspace(info["agent_url"])
 
             await _touch_project(user_id, project_id)
@@ -436,13 +436,7 @@ _QUALITY_BAR = (
     "Build as if this is a real product. "
     "No placeholder text, no 'Lorem ipsum', no 'Coming soon', no 'TODO'. "
     "Every button, label, heading, and message should be what the real app would show. "
-    "Every screen that fetches data must have a loading state and an error state. "
     "Every layout must work on both mobile and desktop.\n\n"
-)
-
-_PLAN_FIRST = (
-    "Before writing any code: think through all the pages, components, and data flows you need. "
-    "Plan the full component hierarchy first, then implement one file at a time.\n\n"
 )
 
 def _wrap_prompt(text: str, is_first_prompt: bool = False) -> str:
@@ -450,12 +444,12 @@ def _wrap_prompt(text: str, is_first_prompt: bool = False) -> str:
         return (
             "Begin your reply with exactly `<name>2-4 word title</name>` on its own line "
             "before anything else. Title-case it (e.g. `<name>Todo List App</name>`).\n\n"
-            + _PLAN_FIRST
+            "Go straight to implementation — no planning narration, no commentary before code. "
+            "Build one file at a time, complete and working.\n\n"
             + _QUALITY_BAR
             + _AGENT_RULES
             + "Build a complete, fully working version — all core flows functional, "
-            "no skeleton screens with TODO comments, no half-built features. "
-            "If the request implies multiple pages, wire up routing from the start.\n\n"
+            "no skeleton screens with TODO comments, no half-built features.\n\n"
             + text
         )
     return (
