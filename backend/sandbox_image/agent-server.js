@@ -398,28 +398,6 @@ app.post('/prompt', async (req, res) => {
 
   // Register event listener before posting so we don't miss early events
   let firstTextSeen = false
-  // Filter out DeepSeek <think>...</think> reasoning blocks from the stream
-  let inThinkBlock = false
-  let thinkBuf = ''
-
-  function filterThink(delta) {
-    let out = ''
-    thinkBuf += delta
-    while (true) {
-      if (inThinkBlock) {
-        const end = thinkBuf.indexOf('</think>')
-        if (end === -1) { thinkBuf = thinkBuf.slice(-8); return out } // keep tail for partial tag
-        inThinkBlock = false
-        thinkBuf = thinkBuf.slice(end + 8)
-      } else {
-        const start = thinkBuf.indexOf('<think>')
-        if (start === -1) { out += thinkBuf; thinkBuf = ''; return out }
-        out += thinkBuf.slice(0, start)
-        inThinkBlock = true
-        thinkBuf = thinkBuf.slice(start + 7)
-      }
-    }
-  }
 
   const listener = async (event) => {
     if (!event || !event.type) return
@@ -429,13 +407,11 @@ app.post('/prompt', async (req, res) => {
       const props = event.properties || {}
       if (props.sessionID !== sessionId) return
       if (props.field === 'text' && props.delta) {
-        const visible = filterThink(props.delta)
-        if (!visible) return
         if (!firstTextSeen) {
           firstTextSeen = true
           writeSse(res, { type: 'new_turn' })
         }
-        writeSse(res, { type: 'output', text: visible })
+        writeSse(res, { type: 'output', text: props.delta })
       }
     }
 
