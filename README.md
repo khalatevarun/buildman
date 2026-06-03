@@ -28,6 +28,61 @@
 
 ---
 
+## The Sandbox
+
+Every user gets their own ephemeral cloud VM — a Debian slim container with Node 20, opencode-ai, and Netlify CLI pre-installed. Two ports are tunnelled via Modal's encrypted URLs and exposed to the browser:
+
+- **Port 3001** — `agent-server.js`, the Express control plane that receives prompts and drives the coding agent
+- **Port 5173** — Vite dev server serving the live React preview
+
+Inside the VM:
+
+```
+/app/                       # agent-server.js + its node_modules
+/opt/starter/               # starter template (source of truth, read-only)
+/workspace/                 # the live project — agent edits files here
+    ├── src/
+    ├── package.json
+    └── node_modules/       # pre-installed at image build time
+```
+
+On first use, `/opt/starter` is copied into `/workspace` and the Vite dev server starts. On project reopen, the VM is restored from a Modal filesystem snapshot so all prior work is intact.
+
+Sandboxes idle-timeout after 15 minutes. A pool of 2 pre-warmed VMs sits ready so new projects start instantly.
+
+---
+
+## The Starter Template
+
+Every project begins from a minimal, pre-wired React template baked into the sandbox image. The coding agent edits files in-place — it never scaffolds from scratch.
+
+```
+/workspace/
+├── index.html
+├── vite.config.ts          # @ → src/ alias, port 5173
+├── package.json
+└── src/
+    ├── App.tsx             # top-level shell
+    ├── main.tsx            # entry point + error boundary
+    ├── index.css           # design token system
+    └── lib/utils.ts        # cn() utility
+```
+
+**Pre-installed packages:**
+
+| Package | Purpose |
+|---|---|
+| `react` 19 + `react-dom` | Core |
+| `tailwindcss` v4 | Styling |
+| `lucide-react` | Icons |
+| `clsx` + `tailwind-merge` | Conditional classes (`cn()`) |
+
+**Design system — Deep Amber:** a monochromatic light-first token set built on a single warm hue (oklch H=65). Background, cards, borders, muted text, and primary all share the same hue at different lightness levels — so every generated app looks cohesive without any extra effort from the agent. No dark mode, no competing accent colors.
+
+The agent is instructed to use only these tokens and never reach for raw hex values or Tailwind palette utilities.
+
+---
+
 ## Architecture
 
 ```mermaid
@@ -82,7 +137,7 @@ flowchart TD
 | Frontend | React 19, Redux Toolkit, Tailwind CSS v4, Clerk |
 | Backend | FastAPI, Python 3.12, Modal |
 | Sandbox | Debian slim, Node 20, opencode-ai, Netlify CLI |
-| Starter template | React + Vite + Tailwind + React Router + TanStack Query |
+| Starter template | React 19 + Vite 6 + Tailwind CSS v4 + lucide-react |
 | Auth | Clerk (JWT validated server-side via JWKS) |
 | Persistence | Modal image snapshots (`snapshot_filesystem`) |
 | Deploy target | Netlify (one site per project) |

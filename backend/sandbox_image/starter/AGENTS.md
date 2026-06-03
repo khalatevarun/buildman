@@ -36,6 +36,8 @@ Only these packages are pre-installed. Do not import anything else.
 
 Use ONLY these tokens. Never use raw hex colors, `oklch(...)`, or Tailwind palette utilities like `text-white`, `bg-gray-500`, `text-blue-600`.
 
+The design system is **monochromatic amber** — every token is the same warm hue at a different lightness. This means UI naturally looks cohesive; don't fight it by reaching for off-palette colors.
+
 **Backgrounds:** `bg-background` `bg-card` `bg-muted` `bg-primary` `bg-secondary` `bg-accent` `bg-destructive`
 **Text:** `text-foreground` `text-muted-foreground` `text-primary` `text-primary-foreground` `text-card-foreground` `text-secondary-foreground` `text-destructive`
 **Borders:** `border-border` `border-primary` `border-destructive`
