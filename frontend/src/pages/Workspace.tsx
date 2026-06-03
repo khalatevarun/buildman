@@ -18,6 +18,7 @@ import {
 } from '../store'
 import { ChatPanel } from '../components/ChatPanel'
 import { PreviewPane } from '../components/PreviewPane'
+import { playCompletionSound } from '../utility/sounds'
 import { RestoreConfirmDialog } from '../components/RestoreConfirmDialog'
 import { api } from '../utility/api'
 import { timeAgo } from '../utility/time'
@@ -156,6 +157,8 @@ export function Workspace() {
       return
     }
     prevStreamingRef.current = streaming
+
+    playCompletionSound()
 
     const queue = promptQueue
     if (queue.length > 0) {

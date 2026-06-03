@@ -16,12 +16,7 @@ app = FastAPI(title="Buildman v2")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "https://khalatevarun--buildman-v2-fastapi-app.modal.run",
-        "https://khalatevarun--buildman-v3-fastapi-app.modal.run",
-    ],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -325,8 +320,8 @@ async def create_project(req: CreateProjectRequest, user_id: str = Depends(get_c
 
             if info is not None:
                 sys.path.insert(0, _modal_app_dir())
-                from modal_app import add_sandbox_to_pool  # noqa: PLC0415
-                add_sandbox_to_pool.spawn()
+                from modal_app import spawn_sandbox  # noqa: PLC0415
+                spawn_sandbox.spawn()
             else:
                 info = await asyncio.to_thread(_create_sandbox, project_id, user_id)
                 yield _sse({"type": "phase", "text": "Waiting for agent…"})

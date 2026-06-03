@@ -13,24 +13,13 @@ Vite + React + TypeScript project at `/workspace`. Edit files in place — never
 ├── netlify.toml                # do not edit
 └── src/
     ├── main.tsx                # do not edit
-    ├── index.css               # design tokens + resets; do not edit
+    ├── index.css               # design tokens + resets; you may append new rules (e.g. theme overrides) but do not modify existing ones
     ├── vite-env.d.ts           # do not edit
     ├── App.tsx                 # router shell — edit only to add/change routes
     └── lib/utils.ts            # cn() utility; do not edit
 ```
 
 All packages are pre-installed. Create pages under `src/pages/`, shared components under `src/components/`, hooks under `src/hooks/`.
-
-## Before Writing Any Code — MANDATORY
-
-**Plan before you touch any file.**
-
-1. List every page or view the user needs
-2. List the components each page requires
-3. Identify shared state and data flows
-4. Only then start writing — one file at a time, completing each fully before moving on
-
-Never start coding without this planning step.
 
 ## Pre-installed Packages
 
@@ -70,7 +59,7 @@ Use ONLY these tokens. Never use raw hex colors, `oklch(...)`, or Tailwind palet
 
 ## Component Rules
 
-- **Max 150 lines per file** — if a file exceeds 150 lines, extract sub-components before continuing
+- **Max 250 lines per file** — if a file exceeds 250 lines, extract sub-components before continuing
 - **One component per file** — no files exporting multiple unrelated components
 - **One custom hook per file** under `src/hooks/` — extract any logic reused across 2+ components
 - Keep components focused: a parent with 2-3 small children beats one large component

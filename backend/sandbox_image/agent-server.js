@@ -36,25 +36,14 @@ function spawnVite() {
 let opencodeSessionId = fs.existsSync(OC_SESSION_FILE)
   ? fs.readFileSync(OC_SESSION_FILE, 'utf8').trim()
   : null
-let buildmanUid = null
-let buildmanGid = null
 let activePromptRes = null  // current streaming /prompt SSE response
 let wasStopped = false
 let sseEventListeners = []  // callbacks receiving OpenCode /event stream
 
-function initNonRootUser() {
-  try {
-    execSync('id buildman', { stdio: 'pipe' })
-  } catch {
-    execSync('useradd -m -u 1000 -s /bin/bash buildman', { stdio: 'pipe' })
-  }
-  buildmanUid = parseInt(execSync('id -u buildman', { encoding: 'utf8' }).trim())
-  buildmanGid = parseInt(execSync('id -g buildman', { encoding: 'utf8' }).trim())
-  fs.mkdirSync(WORKSPACE, { recursive: true })
-  execSync(`chown -R buildman:buildman ${WORKSPACE}`, { stdio: 'pipe' })
-  execSync('su buildman -c "git config --global user.email agent@buildman.dev"', { stdio: 'pipe' })
-  execSync('su buildman -c "git config --global user.name \'Buildman Agent\'"', { stdio: 'pipe' })
-  execSync('su buildman -c "git config --global safe.directory \'*\'"', { stdio: 'pipe' })
+function initGitConfig() {
+  execSync('git config --global user.email agent@buildman.dev', { stdio: 'pipe' })
+  execSync('git config --global user.name "Buildman Agent"', { stdio: 'pipe' })
+  execSync('git config --global safe.directory "*"', { stdio: 'pipe' })
 }
 
 function writeSse(res, payload) {
@@ -188,7 +177,7 @@ async function ensureGitRepo() {
 // ---------------------------------------------------------------------------
 
 function writeOpencodeConfig() {
-  const configDir = '/home/buildman/.config/opencode'
+  const configDir = '/root/.config/opencode'
   fs.mkdirSync(configDir, { recursive: true })
 
   const config = {
@@ -221,9 +210,9 @@ function startOpencodeServer() {
 
   const env = {
     ...process.env,
-    HOME: '/home/buildman',
-    XDG_CONFIG_HOME: '/home/buildman/.config',
-    XDG_DATA_HOME: '/home/buildman/.local/share',
+    HOME: '/root',
+    XDG_CONFIG_HOME: '/root/.config',
+    XDG_DATA_HOME: '/root/.local/share',
     // Ollama fallback: if set, opencode will use the local Ollama server instead
     ...(process.env.OLLAMA_BASE_URL ? { OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL } : {}),
   }
@@ -231,8 +220,6 @@ function startOpencodeServer() {
   const proc = spawn('opencode', ['serve', '--port', String(OC_PORT)], {
     cwd: WORKSPACE,
     env,
-    uid: buildmanUid,
-    gid: buildmanGid,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 
@@ -321,18 +308,12 @@ app.post('/init-workspace', async (req, res) => {
     const hasGitRepo = fs.existsSync(path.join(WORKSPACE, '.git'))
 
     if (hasGitRepo) {
-      if (buildmanUid !== null) {
-        execSync(`chown -R buildman:buildman ${WORKSPACE}`, { stdio: 'pipe' })
-      }
       opencodeSessionId = null
       if (fs.existsSync(OC_SESSION_FILE)) fs.unlinkSync(OC_SESSION_FILE)
     } else if (fs.existsSync(BUNDLE_PATH)) {
       const entries = fs.readdirSync(WORKSPACE).filter(e => e !== 'lost+found')
       if (entries.length === 0) {
         await execAsync(`git clone ${BUNDLE_PATH} ${WORKSPACE}`)
-        if (buildmanUid !== null) {
-          execSync(`chown -R buildman:buildman ${WORKSPACE}`, { stdio: 'pipe' })
-        }
         opencodeSessionId = null
         if (fs.existsSync(OC_SESSION_FILE)) fs.unlinkSync(OC_SESSION_FILE)
       }
@@ -342,9 +323,6 @@ app.post('/init-workspace', async (req, res) => {
       }
       execSync(`cp -a ${STARTER_DIR}/. ${WORKSPACE}/`, { stdio: 'pipe' })
       execSync(`rm -rf ${path.join(WORKSPACE, 'node_modules')}`, { stdio: 'pipe' })
-      if (buildmanUid !== null) {
-        execSync(`chown -R buildman:buildman ${WORKSPACE}`, { stdio: 'pipe' })
-      }
       opencodeSessionId = null
       if (fs.existsSync(OC_SESSION_FILE)) fs.unlinkSync(OC_SESSION_FILE)
       await ensureGitRepo()
@@ -698,9 +676,6 @@ app.post('/set-env', async (req, res) => {
     }
 
     fs.writeFileSync(envPath, content)
-    if (buildmanUid !== null) {
-      execSync(`chown buildman:buildman ${envPath}`, { stdio: 'pipe' })
-    }
 
     // Restart Vite so it picks up the new .env values
     try { execSync('pkill -f "vite" || true', { stdio: 'pipe' }) } catch {}
@@ -713,5 +688,5 @@ app.post('/set-env', async (req, res) => {
   }
 })
 
-initNonRootUser()
+initGitConfig()
 app.listen(3001, () => console.log('Agent server ready on :3001'))

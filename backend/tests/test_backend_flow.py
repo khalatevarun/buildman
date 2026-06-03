@@ -11,7 +11,7 @@ import time
 import httpx
 import pytest
 
-API_URL = "https://khalatevarun--buildman-v3-fastapi-app.modal.run"
+API_URL = "https://khalatevarun--buildman-api.modal.run"
 TEST_USER_ID = "test_flow_user"
 TIMEOUT = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
 
