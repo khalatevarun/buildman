@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { SignedIn, SignedOut, SignInButton, UserButton, useUser, useAuth } from '@clerk/clerk-react'
+import { SignedIn, SignedOut, SignInButton, UserButton, useUser, useAuth, useClerk } from '@clerk/clerk-react'
 import { useSandbox } from '../hooks/useSandbox'
 import { BuildmanSpinner } from '../components/BuildmanSpinner'
 import { SCATTERED } from '../data/prompts'
@@ -8,6 +8,7 @@ import { SCATTERED } from '../data/prompts'
 export function Home() {
   const { user } = useUser()
   const { getToken } = useAuth()
+  const clerk = useClerk()
   const navigate = useNavigate()
   const { createProject, status, phase } = useSandbox(user?.id ?? null, getToken)
   const [prompt, setPrompt] = useState('')
@@ -25,7 +26,11 @@ export function Home() {
   }, [])
 
   const handleStart = async () => {
-    if (!prompt.trim() || !user || status === 'creating') return
+    if (!prompt.trim() || status === 'creating') return
+    if (!user) {
+      clerk.openSignIn()
+      return
+    }
     const projectId = await createProject(prompt.trim())
     navigate(`/workspace/${projectId}`, { state: { initialPrompt: prompt.trim() } })
   }
@@ -123,7 +128,7 @@ export function Home() {
             />
             <div className="absolute bottom-3 left-5 right-3 flex items-center justify-between">
               <span className="text-xs text-muted-foreground/50">
-                {isLoading ? (phase ?? 'Starting…') : '⌘↵ to build'}
+                {isLoading ? (phase ?? 'Starting…') : user ? '⌘↵ to build' : 'Sign in to build'}
               </span>
               <button
                 onClick={handleStart}
