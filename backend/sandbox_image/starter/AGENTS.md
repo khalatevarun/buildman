@@ -127,6 +127,14 @@ After finishing, write 1-3 plain English sentences for the user:
 - Write as if describing the finished result to a friend who has never written code
 - No placeholder language — describe the real thing
 
+## App Identity — MANDATORY
+
+Every app must have a visible name or title heading near the top of the main view. Never build an app that just shows content with no context about what it is. A user landing on a blank page with no title has no idea what they're looking at.
+
+- The heading should be the actual app name derived from the user's request — not "App", "Dashboard", or a placeholder
+- It can be in a nav bar, a hero section, or a simple `<h1>` — whatever fits the layout
+- This is non-negotiable even for simple single-screen apps
+
 ## Never Do
 
 - Import a library not listed under Available Packages
