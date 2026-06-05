@@ -81,6 +81,12 @@ POOL_MIN_REMAINING_SECS = 5 * 60  # discard pool entry if < 5 min left on its cl
 
 # Queue stores plain dicts: {sandbox_id, agent_url, preview_url, expires_at}
 sandbox_pool_queue = modal.Queue.from_name("buildman-pool", create_if_missing=True)
+pool_meta = modal.Dict.from_name("buildman-pool-meta", create_if_missing=True)
+
+# Seconds a pool drain must persist before the scheduler reseeds.
+# This prevents the scheduler from double-spawning when a consume-triggered
+# spawn is already in flight (~30s to provision).
+POOL_DRAIN_RESEED_DELAY = 120
 
 
 @app.function(image=backend_image, retries=2)
@@ -136,9 +142,15 @@ def spawn_sandbox() -> None:
 
 @app.function(image=backend_image, schedule=modal.Period(minutes=5))
 def pool_scheduler() -> None:
-    """Drain expired/unhealthy pool entries and top up to POOL_SIZE.
+    """Health-check pool entries and reseed only when genuinely empty.
 
-    Runs every 5 minutes. Pattern from Modal's official sandbox_pool.py example.
+    Replenishment on consume is handled by spawn_sandbox.spawn() in main.py.
+    This scheduler's job is: clean up expired/unhealthy entries, and reseed
+    to POOL_SIZE when the pool has been empty for longer than POOL_DRAIN_RESEED_DELAY
+    (guards against double-spawning when a consume-triggered spawn is in flight).
+
+    On a fresh deploy, pool_drained_at is absent — treated as "empty forever" so
+    the first scheduler tick seeds the pool without waiting.
     """
     import httpx
 
@@ -172,9 +184,43 @@ def pool_scheduler() -> None:
     for ref in valid:
         sandbox_pool_queue.put(ref)
 
-    # Top up to target size
-    needed = POOL_SIZE - len(valid)
-    for _ in range(max(0, needed)):
-        spawn_sandbox.spawn()
+    if valid:
+        # Pool has entries — consume-triggered spawns are keeping it healthy.
+        # Use sentinel 0 to mark "was healthy this tick" without losing the
+        # None-means-fresh-deploy distinction.
+        pool_meta["pool_drained_at"] = 0
+        print(f"Pool maintenance: {len(valid)} healthy, no spawn needed")
+        return
 
-    print(f"Pool maintenance: {len(valid)} healthy, spawning {max(0, needed)} new")
+    # Pool is empty. Three states for pool_drained_at:
+    #   None (key absent)  → fresh deploy, never been set → reseed immediately
+    #   0                  → pool was healthy last tick, just drained → start drain timer
+    #   timestamp (float)  → pool has been empty since that time → reseed if old enough
+    drained_at = pool_meta.get("pool_drained_at")
+    now = time.time()
+
+    if drained_at is None:
+        # Key was never set — fresh deploy. Seed immediately.
+        print(f"Pool empty (fresh deploy) — seeding {POOL_SIZE} sandboxes")
+        for _ in range(POOL_SIZE):
+            spawn_sandbox.spawn()
+        pool_meta["pool_drained_at"] = now  # start drain timer in case spawns fail
+        return
+
+    if drained_at == 0:
+        # Pool was healthy last tick and just drained (consume claim). A
+        # consume-triggered spawn is almost certainly in flight. Start timer.
+        pool_meta["pool_drained_at"] = now
+        print("Pool just drained — recording drain time, waiting for in-flight spawn")
+        return
+
+    # drained_at is a positive timestamp — pool has been empty since then.
+    age = now - drained_at
+    if age >= POOL_DRAIN_RESEED_DELAY:
+        # Consume-triggered spawn likely failed. Reseed to recover.
+        print(f"Pool empty for {int(age)}s — reseeding {POOL_SIZE} sandboxes")
+        for _ in range(POOL_SIZE):
+            spawn_sandbox.spawn()
+        pool_meta["pool_drained_at"] = now  # reset timer for this new seed cycle
+    else:
+        print(f"Pool empty for {int(age)}s — waiting for in-flight spawn ({POOL_DRAIN_RESEED_DELAY - int(age)}s remaining)")
